@@ -1,0 +1,86 @@
+name: Maven Release
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        description: "Java Runtime Version"
+        required: false
+        type: string
+        default: 17
+      release-prefix:
+        description: "Prefix for release tag"
+        required: false
+        type: string
+        default: "release-"
+      server-id:
+        description: "server id used in pom to reference generated settings.xml"
+        type: string
+        required: true
+      channel-id:
+        description: "Slack channel-id to post notification to"
+        required: false
+        type: string
+        default: NO_ID
+
+jobs:
+  maven-release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Set up Java ${{ inputs.java-version }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: liberica
+          server-id: ${{ inputs.server-id }}
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Publish
+        env:
+          MAVEN_USERNAME: ${{ secrets.ARTIFACTORY_AUTH_USER }}
+          MAVEN_PASSWORD: ${{ secrets.ARTIFACTORY_AUTH_TOKEN }}
+          REL_PREFIX: ${{ inputs.release-prefix }}
+        run: |
+          export REL_LEN=`echo $REL_PREFIX | wc -c | xargs`
+          PREVIOUS_VERSION=`git tag -l --sort -version:refname "${REL_PREFIX}*" | head -n 1 | cut -c ${REL_LEN}-`
+          echo "Preparing to release artifact, previous release version is: $PREVIOUS_VERSION" >> $GITHUB_STEP_SUMMARY
+          mvn -B versions:set -DnewVersion=$PREVIOUS_VERSION
+          mvn -B versions:set -DnextSnapshot
+          mvn -B versions:set -DremoveSnapshot
+          CURRENT_VERSION=`mvn -B help:evaluate -Dexpression=project.version -q -DforceStdout`
+          echo "Releasing in version $CURRENT_VERSION"
+          mvn -B clean deploy -DpublishArtifact=true
+          echo "Released in version $CURRENT_VERSION - ready to tag release" >> $GITHUB_STEP_SUMMARY
+          git config user.name "Github Bot"
+          git config user.email "github@entur.org"
+          git tag -a ${REL_PREFIX}${CURRENT_VERSION} HEAD -m "Release $CURRENT_VERSION" 
+          git push --tags
+          echo "Release commit has been tagged"
+
+  post-failure-to-slack:
+    needs: maven-release
+    if: failure() && inputs.channel-id != 'NO_ID'
+    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: "🔴 Maven artifact deploy failed for ${{ github.repository }}\n ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+    secrets: inherit
+
+  post-success-to-slack:
+    needs: maven-release
+    if: success() && inputs.channel-id != 'NO_ID'
+    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: "🟢 Maven artifact deploy success for ${{ github.repository }}\n ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+    secrets: inherit

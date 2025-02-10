@@ -1,0 +1,110 @@
+name: validate-maven
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        description: Java Runtime Version
+        required: true
+        type: string
+      server-id:
+        description: Server-id used in pom to reference generated settings.xml
+        type: string
+        required: false
+        default: entur-partner
+      automerge-dependabot:
+        description: "If PR is from dependabot, should we auto-merge it?"
+        type: string
+        required: false
+        default: false
+      upload-artifact:
+        description: "Upload artifacts from folder lib after build"
+        type: string
+        required: false
+        default: false
+      build-profiles:
+        description: "Profiles to use for maven build"
+        type: string
+        required: false
+        default: NO_PROFILE
+      build-runner:
+        description: "Label of runner to use for maven build. (https://github.com/entur/abt-gha/settings/actions/runners)"
+        type: string
+        required: false
+        default: ubuntu-24.04
+      channel-id:
+        description: "Slack channel-id to post notification to"
+        required: false
+        type: string
+        default: NO_ID
+
+jobs:
+  validate-maven-build:
+    runs-on: ${{ inputs.build-runner }}
+    outputs:
+      deploy-message: ${{ steps.autodeploy.outputs.message }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Java ${{ inputs.java-version }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: liberica
+          server-id: ${{ inputs.server-id }}
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Verify (without profile)
+        if: inputs.build-profiles == 'NO_PROFILE'
+        env:
+          MAVEN_USERNAME: ${{ secrets.ARTIFACTORY_AUTH_USER }}
+          MAVEN_PASSWORD: ${{ secrets.ARTIFACTORY_AUTH_TOKEN }}
+        run: |
+          mvn -B clean verify
+          echo "Validating maven build without profile" >> $GITHUB_STEP_SUMMARY
+      - name: Verify (with profile)
+        if: inputs.build-profiles != 'NO_PROFILE'
+        env:
+          MAVEN_USERNAME: ${{ secrets.ARTIFACTORY_AUTH_USER }}
+          MAVEN_PASSWORD: ${{ secrets.ARTIFACTORY_AUTH_TOKEN }}
+        run: |
+          mvn -B clean verify -P${{inputs.build-profiles}}
+          echo "Validating maven build with profile(s): ${{inputs.build-profiles}}" >> $GITHUB_STEP_SUMMARY
+      - name: Ready for upload
+        if: success() && inputs.upload-artifact == 'true'
+        run: |
+          mkdir libs
+          mv target/app.jar libs
+      - name: Archive Build Artifacts
+        if: success() && inputs.upload-artifact == 'true'
+        uses: actions/upload-artifact@v4
+        with:
+          name: app
+          path: libs
+          retention-days: 4
+          overwrite: true
+
+  post-to-slack-if-failure:
+    needs: validate-maven-build
+    if: failure() && inputs.channel-id != 'NO_ID'
+    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: "🟡 PR build failed for '${{ github.event.pull_request.title }}' - ${{ github.server_url }}/${{ github.repository }}/pull/${{ github.event.number }}"
+    secrets: inherit
+
+  auto-merge-if-dependabot-not-major:
+    needs: validate-maven-build
+    uses: ./.github/workflows/auto-merge.yml
+    secrets: inherit
+    if: >
+      success() && inputs.automerge-dependabot == 'true' &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      contains(github.event.pull_request.head.ref,'auto-merge-')
+    with:
+      channel-id: ${{ inputs.channel-id }}

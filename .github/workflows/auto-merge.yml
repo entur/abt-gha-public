@@ -1,0 +1,59 @@
+name: Auto Merge
+on:
+  workflow_call:
+    inputs:
+      self-check:
+        description: "Calling workflow will check if auto-deploy should happen"
+        required: false
+        type: boolean
+        default: false
+      channel-id:
+        description: "Slack channel-id to post notification to"
+        required: false
+        type: string
+        default: NO_ID
+
+jobs:
+  auto-merge:
+    if: >
+      (inputs.self-check == true) ||
+        (github.event.pull_request.user.login == 'dependabot[bot]' &&
+        contains(github.event.pull_request.head.ref,'auto-merge-'))
+    runs-on: ubuntu-24.04
+    permissions:
+      pull-requests: write
+      contents: write
+      issues: write
+    outputs:
+      deploy-message: ${{ steps.merge-it.outputs.message }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Do merge
+        id: merge-it
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          echo "Attempting to auto-merge $REF" >> $GITHUB_STEP_SUMMARY
+          gh pr merge --auto --squash "$REF"
+          echo "message=Automatically merged dependabot branch $REF" >> $GITHUB_OUTPUT
+          echo "Successfully auto-merged $REF" >> $GITHUB_STEP_SUMMARY
+
+  post-to-slack-if-merged:
+    needs: auto-merge
+    # The contains bit is important to prevent empty messages in case aut-merge step was skipped (not failed)
+    if: success() && contains(needs.auto-merge.outputs.deploy-message,'Automatically merged') && inputs.channel-id != 'NO_ID'
+    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: "🔵 ${{ github.repository }} - ${{ needs.auto-merge.outputs.deploy-message }}"
+    secrets: inherit
+
+  post-fail-to-slack-if-fail:
+    needs: auto-merge
+    if: failure() && inputs.channel-id != 'NO_ID'
+    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: "⚫ Automerge of dependabot PR failed. This is most likely due to branch being behind HEAD on main, and will be resolved by dependabot. ${{ github.event.pull_request.head.ref }}"
+    secrets: inherit
