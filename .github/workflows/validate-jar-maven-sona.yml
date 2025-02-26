@@ -1,0 +1,40 @@
+name: validate-maven-sona
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        description: Java Runtime Version
+        required: true
+        type: string
+      server-id:
+        description: Server-id used in pom to reference generated settings.xml
+        type: string
+        required: false
+        default: ossrh
+
+jobs:
+  validate-maven-build:
+    runs-on: ${{ inputs.build-runner }}
+    outputs:
+      deploy-message: ${{ steps.autodeploy.outputs.message }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Java ${{ inputs.java-version }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: liberica
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Verify (without profile)
+        if: inputs.build-profiles == 'NO_PROFILE'
+        env:
+          MAVEN_USERNAME: ${{ secrets.ARTIFACTORY_AUTH_USER }}
+          MAVEN_PASSWORD: ${{ secrets.ARTIFACTORY_AUTH_TOKEN }}
+        run: |
+          mvn -B clean verify
