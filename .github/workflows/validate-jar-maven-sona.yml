@@ -14,7 +14,7 @@ on:
 
 jobs:
   validate-maven-build:
-    runs-on: ${{ inputs.build-runner }}
+    runs-on: ubuntu-24.04
     outputs:
       deploy-message: ${{ steps.autodeploy.outputs.message }}
     steps:
