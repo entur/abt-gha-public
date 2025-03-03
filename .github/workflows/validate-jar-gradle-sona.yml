@@ -4,8 +4,9 @@ on:
     inputs:
       java-version:
         description: Java Runtime Version
-        required: true
+        required: false
         type: string
+        default: 21
       tasks:
         description: Gradle tasks
         required: false
@@ -31,14 +32,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
       - name: Build with Gradle Wrapper
         run: |
-          argument=""
+          GRADLE_LOG_ARGUMENT=""
           # detect log level      
           if [ "${{ inputs.log-level }}" = "info" ]; then
-            argument="--info"
+            GRADLE_LOG_ARGUMENT="--info"
           elif [ "${{ inputs.log-level }}" = "debug" ]; then
-            argument="--debug"
+            GRADLE_LOG_ARGUMENT="--debug"
           fi
-          ./gradlew ${{ inputs.tasks }} $argument --stacktrace
+          ./gradlew ${{ inputs.tasks }} $GRADLE_LOG_ARGUMENT --stacktrace
       - name: Store build reports
         if: failure()
         uses: actions/upload-artifact@v4
