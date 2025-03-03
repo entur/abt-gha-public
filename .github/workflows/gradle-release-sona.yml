@@ -58,7 +58,7 @@ jobs:
           echo "Preparing to release artifact" >> $GITHUB_STEP_SUMMARY
           PREVIOUS_TAG=$(git tag -l --sort -version:refname "${{ inputs.release-prefix }}*" | head -n 1)
           if [ "$PREVIOUS_TAG" = "" ]; then
-            echo "Expected a preexisting tag on the form '${{ inputs.release-prefix }}-x.y.z' for automatic version increment" >> $GITHUB_STEP_SUMMARY
+            echo "Expected a preexisting tag on the form '${{ inputs.release-prefix }}-x.y.z' for automatic version increment"
             exit 1
           fi
           echo "Previous release tag is: $PREVIOUS_TAG" >> $GITHUB_STEP_SUMMARY
