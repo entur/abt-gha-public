@@ -18,6 +18,11 @@ on:
         required: false
         type: string
         default: NO_ID
+      release-prefix:
+        description: "Prefix for release tag"
+        required: false
+        type: string
+        default: "release-"
     secrets:
       SONATYPE_AUTH_USER:
         required: true
