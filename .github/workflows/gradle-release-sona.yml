@@ -130,6 +130,8 @@ jobs:
           
           echo -n $SONATYPE_GPG_KEY | base64 --decode | gpg --batch --no-tty --import --yes
           ./gradlew ${{ inputs.tasks }} -Pversion=$RELEASE_VERSION -Psigning.gnupg.passphrase=$SONATYPE_GPG_KEY_PASSWORD -Psigning.gnupg.keyName=$SONATYPE_GPG_KEY_NAME -PsonatypeUsername=$SONATYPE_USERNAME -PsonatypePassword=$SONATYPE_PASSWORD $GRADLE_LOG_ARGUMENT --stacktrace
+          
+          echo "$COMMIT_MESSAGE" >> $GITHUB_STEP_SUMMARY
           echo "Release $RELEASE_VERSION published to Maven Central" >> $GITHUB_STEP_SUMMARY
           
           git config user.name "Github Bot"
