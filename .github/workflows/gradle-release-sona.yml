@@ -67,7 +67,7 @@ jobs:
           echo "Previous release tag is: $PREVIOUS_TAG"
           
           REL_LEN=$(echo ${{ inputs.release-prefix }} | wc -c | xargs)
-          PREVIOUS_VERSION=$(echo $PREVIOUS_TAG | cut -c ${REL_LEN}-`)
+          PREVIOUS_VERSION=$(echo $PREVIOUS_TAG | cut -c ${REL_LEN}-)
 
           echo "Previous release version is: $PREVIOUS_VERSION"
 
