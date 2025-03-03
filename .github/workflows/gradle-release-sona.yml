@@ -128,7 +128,7 @@ jobs:
             **/build/test-results/
 
   post-failure-to-slack:
-    needs: maven-release
+    needs: gradle-release
     if: failure() && inputs.channel-id != 'NO_ID'
     uses: entur/gha-slack/.github/workflows/post.yml@v2
     with:
@@ -137,7 +137,7 @@ jobs:
     secrets: inherit
 
   post-success-to-slack:
-    needs: maven-release
+    needs: gradle-release
     if: success() && inputs.channel-id != 'NO_ID'
     uses: entur/gha-slack/.github/workflows/post.yml@v2
     with:
