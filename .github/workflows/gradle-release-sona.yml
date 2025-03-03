@@ -100,7 +100,7 @@ jobs:
 
           # Increment version (and reset lower digits to zero)
           # https://stackoverflow.com/questions/59435639/fix-shell-script-to-increment-semversion
-          read MAJOR MINOR PATCH < <(echo $version | ( IFS=".$IFS" ; read a b c && echo $a $b $c ))
+          read MAJOR MINOR PATCH < <(echo $PREVIOUS_VERSION | ( IFS=".$IFS" ; read a b c && echo $a $b $c ))
           if [ "$VERSION_INCREMENT" = "minor" ]; then
             MINOR="$((MINOR + 1))"
             PATCH="0"
