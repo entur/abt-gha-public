@@ -1,0 +1,147 @@
+name: gradle-release-sonatype
+description: "Publish release artifact to Maven Central for a Gradle library project. The project must propagate the command-line 'version' property to artifact version in the Gradle publishing configuration."
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        description: Java Runtime Version
+        required: false
+        type: string
+        default: 21
+      tasks:
+        description: Gradle tasks.
+        required: false
+        type: string
+        default: build publishToSonatype closeAndReleaseSonatypeStagingRepository
+      log-level:
+        description: Optional Gradle log level (debug, info, warn)
+        required: false
+        type: string
+        default: ""
+      release-prefix:
+        description: "Prefix for release tag"
+        required: false
+        type: string
+        default: "release-"
+    secrets:
+      SONATYPE_AUTH_USER:
+        required: true
+      SONATYPE_AUTH_TOKEN:
+        required: true
+      SONATYPE_GPG_KEY:
+        required: true
+      SONATYPE_GPG_KEY_NAME:
+        required: true
+      SONATYPE_GPG_KEY_PASSWORD:
+        required: true
+
+jobs:
+  gradle-release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+      - name: Set up Java ${{ inputs.java-version }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: liberica
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Publish
+        env:
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_AUTH_USER }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_AUTH_TOKEN }}
+          SONATYPE_GPG_KEY: ${{ secrets.SONATYPE_GPG_KEY }}
+          SONATYPE_GPG_KEY_NAME: ${{ secrets.SONATYPE_GPG_KEY_NAME }}
+          SONATYPE_GPG_KEY_PASSWORD: ${{ secrets.SONATYPE_GPG_KEY_PASSWORD }}
+        run: |
+          echo "Preparing to release artifact"
+          PREVIOUS_TAG=$(git tag -l --sort -version:refname "${{ inputs.release-prefix }}*" | head -n 1)
+          if [ "$PREVIOUS_TAG" = "" ]; then
+            echo "Expected a preexisting tag on the form '${{ inputs.release-prefix }}x.y.z' for automatic version increment"
+            exit 1
+          fi
+          echo "Previous release tag is: $PREVIOUS_TAG"
+          
+          REL_LEN=$(echo ${{ inputs.release-prefix }} | wc -c | xargs)
+          PREVIOUS_VERSION=$(echo $PREVIOUS_TAG | cut -c ${REL_LEN}-)
+
+          echo "Previous release version is: $PREVIOUS_VERSION"
+
+          COMMIT_MESSAGE=$(git log --format="%B")
+          # default version increment is patch
+          VERSION_INCREMENT="patch"
+          
+          # check whether commit message contains bracket
+          if [[ $COMMIT_MESSAGE =~ \[ ]]; then
+            # extract bracket contents (supports multiple brackets)
+            BRACKET_PAYLOADS=$(echo "$COMMIT_MESSAGE" | grep -Po "(?<=\[)[^\]]*(?=\])")
+            
+            # iterate over bracket payloads
+            while IFS= read -r BRACKET_PAYLOAD; do
+              # trim whitespace and go lowercase
+              BRACKET_PAYLOAD_TRIMMED=$(echo "$BRACKET_PAYLOAD" | tr -d '[:blank:]')
+              BRACKET_PAYLOAD_TRIMMED_LOWERCASE=$(tr '[:upper:]' '[:lower:]' <<<"$BRACKET_PAYLOAD_TRIMMED" )
+              
+              # detect type      
+              if [ "$BRACKET_PAYLOAD_TRIMMED_LOWERCASE" = "minor" ]; then
+                VERSION_INCREMENT="minor"
+              elif [ "$BRACKET_PAYLOAD_TRIMMED_LOWERCASE" = "major" ]; then
+                VERSION_INCREMENT="major"
+              elif [ "$BRACKET_PAYLOAD_TRIMMED_LOWERCASE" = "patch" ]; then
+                VERSION_INCREMENT="patch"
+              fi
+            done <<< "$BRACKET_PAYLOADS"
+          fi
+          echo "$VERSION_INCREMENT version increment"
+
+          # Increment version (and reset lower digits to zero)
+          # https://stackoverflow.com/questions/59435639/fix-shell-script-to-increment-semversion
+          read MAJOR MINOR PATCH < <(echo $PREVIOUS_VERSION | ( IFS=".$IFS" ; read a b c && echo $a $b $c ))
+          if [ "$VERSION_INCREMENT" = "minor" ]; then
+            MINOR="$((MINOR + 1))"
+            PATCH="0"
+          elif [ "$VERSION_INCREMENT" = "major" ]; then
+            MAJOR="$((MAJOR + 1))"
+            MINOR="0"
+            PATCH="0"
+          elif [ "$VERSION_INCREMENT" = "patch" ]; then
+            PATCH="$((PATCH + 1))"
+          fi
+          RELEASE_VERSION=$(echo "${MAJOR}.${MINOR}.${PATCH}")
+          
+          echo "New release version is $RELEASE_VERSION"
+          
+          GRADLE_LOG_ARGUMENT=""
+          # detect log level      
+          if [ "${{ inputs.log-level }}" = "info" ]; then
+            GRADLE_LOG_ARGUMENT="--info"
+            echo "Use info logging in Gradle build"
+          elif [ "${{ inputs.log-level }}" = "debug" ]; then
+            GRADLE_LOG_ARGUMENT="--debug"
+            echo "Use debug logging in Gradle build"
+          elif [ "${{ inputs.log-level }}" = "warn" ]; then
+            GRADLE_LOG_ARGUMENT="--warn"
+            echo "Use warn logging in Gradle build"
+          fi
+          
+          echo -n $SONATYPE_GPG_KEY | base64 --decode | gpg --batch --no-tty --import --yes
+          ./gradlew ${{ inputs.tasks }} -Pversion=$RELEASE_VERSION -Psigning.gnupg.passphrase=$SONATYPE_GPG_KEY_PASSWORD -Psigning.gnupg.keyName=$SONATYPE_GPG_KEY_NAME -PsonatypeUsername=$SONATYPE_USERNAME -PsonatypePassword=$SONATYPE_PASSWORD $GRADLE_LOG_ARGUMENT --stacktrace
+          echo "Release $RELEASE_VERSION published to Maven Central" >> $GITHUB_STEP_SUMMARY
+          
+          git config user.name "Github Bot"
+          git config user.email "github@entur.org"
+          git tag -a ${{ inputs.release-prefix }}${RELEASE_VERSION} HEAD -m "Release $RELEASE_VERSION" 
+          git push --tags
+      - name: Store build reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            **/build/reports/
+            **/build/test-results/
+
