@@ -19,9 +19,9 @@ on:
         type: string
         default: NO_ID
     secrets:
-      SONATYPE_USERNAME:
+      SONATYPE_AUTH_USER:
         required: true
-      SONATYPE_PASSWORD:
+      SONATYPE_AUTH_TOKEN:
         required: true
       SONATYPE_GPG_KEY:
         required: true
@@ -44,8 +44,8 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
       - name: Publish
         env:
-          SONATYPE_USERNAME: ${{ secrets.SONATYPE_USERNAME }}
-          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_PASSWORD }}
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_AUTH_USER }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_AUTH_TOKEN }}
           SONATYPE_GPG_KEY: ${{ secrets.SONATYPE_GPG_KEY }}
           SONATYPE_GPG_KEY_NAME: ${{ secrets.SONATYPE_GPG_KEY_NAME }}
           SONATYPE_GPG_KEY_PASSWORD: ${{ secrets.SONATYPE_GPG_KEY_PASSWORD }}
