@@ -1,4 +1,4 @@
-name: validate-jar-gradle-sona
+name: gradle-release-sonatype
 description: "Publish release artifact to Maven Central for a Gradle library project. The project must propagate the command-line 'version' property to artifact version in the Gradle publishing configuration."
 on:
   workflow_call:
@@ -9,7 +9,7 @@ on:
         type: string
         default: 21
       tasks:
-        description: Gradle tasks
+        description: Gradle tasks.
         required: false
         type: string
         default: build publishToSonatype closeAndReleaseSonatypeStagingRepository
@@ -130,13 +130,12 @@ jobs:
           
           echo -n $SONATYPE_GPG_KEY | base64 --decode | gpg --batch --no-tty --import --yes
           ./gradlew ${{ inputs.tasks }} -Pversion=$RELEASE_VERSION -Psigning.gnupg.passphrase=$SONATYPE_GPG_KEY_PASSWORD -Psigning.gnupg.keyName=$SONATYPE_GPG_KEY_NAME -PsonatypeUsername=$SONATYPE_USERNAME -PsonatypePassword=$SONATYPE_PASSWORD $GRADLE_LOG_ARGUMENT --stacktrace
+          echo "Release $RELEASE_VERSION published to Maven Central" >> $GITHUB_STEP_SUMMARY
           
           git config user.name "Github Bot"
           git config user.email "github@entur.org"
           git tag -a ${{ inputs.release-prefix }}${RELEASE_VERSION} HEAD -m "Release $RELEASE_VERSION" 
           git push --tags
-          echo "Release $RELEASE_VERSION commit has been tagged"
-          echo "Release $RELEASE_VERSION commit has been tagged" >> $GITHUB_STEP_SUMMARY
       - name: Store build reports
         if: failure()
         uses: actions/upload-artifact@v4
