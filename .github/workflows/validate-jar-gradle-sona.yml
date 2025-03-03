@@ -38,6 +38,8 @@ jobs:
             GRADLE_LOG_ARGUMENT="--info"
           elif [ "${{ inputs.log-level }}" = "debug" ]; then
             GRADLE_LOG_ARGUMENT="--debug"
+          elif [ "${{ inputs.log-level }}" = "warn" ]; then
+            GRADLE_LOG_ARGUMENT="--warn"
           fi
           ./gradlew ${{ inputs.tasks }} $GRADLE_LOG_ARGUMENT --stacktrace
       - name: Store build reports
