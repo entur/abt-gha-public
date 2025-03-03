@@ -111,7 +111,7 @@ jobs:
           
           echo "Added $VERSION_INCREMENT increment for release version $RELEASE_VERSION" >> $GITHUB_STEP_SUMMARY
           echo -n $SONATYPE_GPG_KEY | base64 --decode | gpg --batch --no-tty --import --yes
-          ./gradlew build publishToSonatype closeAndReleaseSonatypeStagingRepository -Pversion=$RELEASE_VERSION -Psigning.gnupg.passphrase=$SONATYPE_GPG_KEY_PASSWORD -Psigning.gnupg.keyName=$SONATYPE_GPG_KEY_NAME -PsonatypeUsername=$SONATYPE_USERNAME -PsonatypePassword=$SONATYPE_PASSWORD $GRADLE_LOG_ARGUMENT --stacktrace
+          #./gradlew build publishToSonatype closeAndReleaseSonatypeStagingRepository -Pversion=$RELEASE_VERSION -Psigning.gnupg.passphrase=$SONATYPE_GPG_KEY_PASSWORD -Psigning.gnupg.keyName=$SONATYPE_GPG_KEY_NAME -PsonatypeUsername=$SONATYPE_USERNAME -PsonatypePassword=$SONATYPE_PASSWORD $GRADLE_LOG_ARGUMENT --stacktrace
           
           git config user.name "Github Bot"
           git config user.email "github@entur.org"
