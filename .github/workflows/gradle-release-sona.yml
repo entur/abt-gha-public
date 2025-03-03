@@ -18,11 +18,6 @@ on:
         required: false
         type: string
         default: ""
-      channel-id:
-        description: "Slack channel-id to post notification to"
-        required: false
-        type: string
-        default: "NO_ID"
       release-prefix:
         description: "Prefix for release tag"
         required: false
@@ -151,20 +146,3 @@ jobs:
             **/build/reports/
             **/build/test-results/
 
-  post-failure-to-slack:
-    needs: gradle-release
-    if: ${{ failure() && inputs.channel-id != 'NO_ID' }}
-    uses: entur/gha-slack/.github/workflows/post.yml@v2
-    with:
-      channel_id: ${{ inputs.channel-id }}
-      message: "🔴 Gradle artifact deploy failed for ${{ github.repository }}\n ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-    secrets: inherit
-
-  post-success-to-slack:
-    needs: gradle-release
-    if: ${{ success() && inputs.channel-id != 'NO_ID' }}
-    uses: entur/gha-slack/.github/workflows/post.yml@v2
-    with:
-      channel_id: ${{ inputs.channel-id }}
-      message: "🟢 Gradle artifact deploy success for ${{ github.repository }}\n ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
-    secrets: inherit
