@@ -71,7 +71,7 @@ jobs:
 
           echo "Previous release version is: $PREVIOUS_VERSION"
 
-          COMMIT_MESSAGE=$(git log --format="%B")
+          COMMIT_MESSAGE=$(git log --format="%B" -n 1)
           # default version increment is patch
           VERSION_INCREMENT="patch"
           
