@@ -1,4 +1,4 @@
-name: validate-maven-sona
+name: validate-jar-gradle-sona
 on:
   workflow_call:
     inputs:
