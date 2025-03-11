@@ -6,17 +6,10 @@ on:
         description: Java Runtime Version
         required: true
         type: string
-      server-id:
-        description: Server-id used in pom to reference generated settings.xml
-        type: string
-        required: false
-        default: ossrh
 
 jobs:
   validate-maven-build:
     runs-on: ubuntu-24.04
-    outputs:
-      deploy-message: ${{ steps.autodeploy.outputs.message }}
     steps:
       - uses: actions/checkout@v4
       - name: Set up Java ${{ inputs.java-version }}
@@ -32,9 +25,5 @@ jobs:
           restore-keys: |
             ${{ runner.os }}-maven-
       - name: Verify (without profile)
-        if: inputs.build-profiles == 'NO_PROFILE'
-        env:
-          MAVEN_USERNAME: ${{ secrets.ARTIFACTORY_AUTH_USER }}
-          MAVEN_PASSWORD: ${{ secrets.ARTIFACTORY_AUTH_TOKEN }}
         run: |
           mvn -B clean verify
