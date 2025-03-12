@@ -1,0 +1,92 @@
+name: gradle-release-sonatype
+description: "Publish release artifact to Maven Central for a Gradle library project for the current tag. The project must propagate the command-line 'version' property to artifact version in the Gradle publishing configuration."
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        description: Java Runtime Version
+        required: false
+        type: string
+        default: 21
+      tasks:
+        description: Gradle tasks.
+        required: false
+        type: string
+        default: build publishToSonatype closeAndReleaseSonatypeStagingRepository
+      log-level:
+        description: Optional Gradle log level (debug, info, warn)
+        required: false
+        type: string
+        default: ""
+      release-prefix:
+        description: "Prefix for release tag"
+        required: false
+        type: string
+        default: "release-"
+    secrets:
+      SONATYPE_AUTH_USER:
+        required: true
+      SONATYPE_AUTH_TOKEN:
+        required: true
+      SONATYPE_GPG_KEY:
+        required: true
+      SONATYPE_GPG_KEY_NAME:
+        required: true
+      SONATYPE_GPG_KEY_PASSWORD:
+        required: true
+
+jobs:
+  gradle-release:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Java ${{ inputs.java-version }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: liberica
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Publish
+        env:
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_AUTH_USER }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_AUTH_TOKEN }}
+          SONATYPE_GPG_KEY: ${{ secrets.SONATYPE_GPG_KEY }}
+          SONATYPE_GPG_KEY_NAME: ${{ secrets.SONATYPE_GPG_KEY_NAME }}
+          SONATYPE_GPG_KEY_PASSWORD: ${{ secrets.SONATYPE_GPG_KEY_PASSWORD }}
+        run: |
+          echo "Preparing to release artifact"
+          
+          CURRENT_TAG=$(git symbolic-ref -q --short HEAD || git describe --tags --exact-match)
+
+          echo "Current tag is $CURRENT_TAG"
+
+          REL_LEN=$(echo ${{ inputs.release-prefix }} | wc -c | xargs)
+          CURRENT_VERSION=$(echo $CURRENT_TAG | cut -c ${REL_LEN}-)
+
+          echo "Current version is $CURRENT_VERSION"
+          
+          GRADLE_LOG_ARGUMENT=""
+          # detect log level      
+          if [ "${{ inputs.log-level }}" = "info" ]; then
+            GRADLE_LOG_ARGUMENT="--info"
+            echo "Use info logging in Gradle build"
+          elif [ "${{ inputs.log-level }}" = "debug" ]; then
+            GRADLE_LOG_ARGUMENT="--debug"
+            echo "Use debug logging in Gradle build"
+          elif [ "${{ inputs.log-level }}" = "warn" ]; then
+            GRADLE_LOG_ARGUMENT="--warn"
+            echo "Use warn logging in Gradle build"
+          fi
+          
+          echo -n $SONATYPE_GPG_KEY | base64 --decode | gpg --batch --no-tty --import --yes
+          ./gradlew ${{ inputs.tasks }} -Pversion=$CURRENT_VERSION -Psigning.gnupg.passphrase=$SONATYPE_GPG_KEY_PASSWORD -Psigning.gnupg.keyName=$SONATYPE_GPG_KEY_NAME -PsonatypeUsername=$SONATYPE_USERNAME -PsonatypePassword=$SONATYPE_PASSWORD $GRADLE_LOG_ARGUMENT --stacktrace
+      - name: Store build reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            **/build/reports/
+            **/build/test-results/
+
