@@ -9,7 +9,7 @@ Builder using Maven (i.e. not wrapper)
 Workflows:
   * validate-jar-maven-sona.yml
     * Builds project with Maven
-  * maven-release-sona.yml
+  * maven-release-sona.yml __Note: this job can leak secrets if run on untrusted code__
     * Increment version based on incrementing latest previous release
     * Publish artifacts to Maven Central (Sonatype)
     * Creates tag
@@ -20,12 +20,12 @@ Build using Gradle wrapper.
 Workflows: 
  * validate-jar-gradle-sona.yml
    * Builds project with gradle 
- * gradle-release-sona.yml
+ * gradle-release-sona.yml __Note: this job can leak secrets if run on untrusted code__ 
    * Increment version based on incrementing latest previous release
      * Add [patch], [minor] or [major] to commit message to control increment (patch is the default)
    * Publish artifacts to Maven Central (Sonatype)
    * Creates tag 
- * gradle-release-tag-sona.yml
+ * gradle-release-tag-sona.yml __Note: this job can leak secrets if run on untrusted code__
    * Extracts version from the current tag
    * Publish artifacts to Maven Central (Sonatype)
 
