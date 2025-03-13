@@ -1,4 +1,4 @@
-name: validate-jar-gradle-sona
+name: gradle-open-source-verify
 on:
   workflow_call:
     inputs:

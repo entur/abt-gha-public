@@ -39,9 +39,12 @@ on:
       SONATYPE_GPG_KEY_PASSWORD:
         required: true
     outputs:
-      version: ${{ jobs.maven-release.outputs.version }}
-      tag: ${{ jobs.maven-release.outputs.tag }}
-
+      version:
+        description: Release version
+        value: ${{ jobs.maven-release.outputs.version }}
+      tag:
+        description: Release tag
+        value: ${{ jobs.maven-release.outputs.tag }}
 
 jobs:
   maven-release:
