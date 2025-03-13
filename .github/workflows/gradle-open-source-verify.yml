@@ -1,0 +1,52 @@
+name: validate-jar-gradle-sona
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        description: Java Runtime Version
+        required: false
+        type: string
+        default: 21
+      tasks:
+        description: Gradle task parameters
+        required: false
+        type: string
+        default: build
+      log-level:
+        description: Gradle log level
+        required: false
+        type: string
+        default: ""
+
+jobs:
+  validate-gradle-build:
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Java ${{ inputs.java-version }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: liberica
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Build with Gradle Wrapper
+        run: |
+          GRADLE_LOG_ARGUMENT=""
+          # detect log level      
+          if [ "${{ inputs.log-level }}" = "info" ]; then
+            GRADLE_LOG_ARGUMENT="--info"
+          elif [ "${{ inputs.log-level }}" = "debug" ]; then
+            GRADLE_LOG_ARGUMENT="--debug"
+          elif [ "${{ inputs.log-level }}" = "warn" ]; then
+            GRADLE_LOG_ARGUMENT="--warn"
+          fi
+          ./gradlew ${{ inputs.tasks }} $GRADLE_LOG_ARGUMENT --stacktrace
+      - name: Store build reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+            name: reports
+            path: |
+                **/build/reports/
+                **/build/test-results/
