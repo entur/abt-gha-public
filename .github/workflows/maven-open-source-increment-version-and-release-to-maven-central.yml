@@ -41,13 +41,13 @@ on:
     outputs:
       version:
         description: Release version
-        value: ${{ jobs.maven-release.outputs.version }}
+        value: ${{ jobs.release.outputs.version }}
       tag:
         description: Release tag
-        value: ${{ jobs.maven-release.outputs.tag }}
+        value: ${{ jobs.release.outputs.tag }}
 
 jobs:
-  maven-release:
+  release:
     outputs:
       version: ${{ steps.publish.outputs.version }}
       tag: ${{ steps.publish.outputs.tag }}
