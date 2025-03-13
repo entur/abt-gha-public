@@ -1,7 +1,6 @@
 # abt-gha-public
 
-This repository contains workflows used to verify, build and deploy artifacts in projects used by
-account based ticketing (ABT) team at Entur.
+This repository contains workflows used to verify, build and deploy artifacts in projects used by  account based ticketing (ABT) team at Entur.
 
 # Versioning strategies
 These workflows support various versioning strategies:
@@ -35,6 +34,9 @@ Workflows:
     * Extracts version from the current tag
     * Publish artifacts to Maven Central (Sonatype)
 
+#### Dry-run
+Upload to Maven central without close/releasing staging repo: Set `autoReleaseAfterClose` to `false` in `nexus-staging-maven-plugin` configuration.
+
 ### Gradle
 Build using Gradle wrapper.
 
@@ -67,4 +69,7 @@ publications {
     }
 }
 ```
+
+#### Dry-run
+Upload to Maven central without close/releasing staging repo: Set `tasks` parameter `build publishToSonatype`.
 
