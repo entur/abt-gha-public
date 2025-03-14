@@ -117,20 +117,25 @@ jobs:
           fi
           echo "Apply $VERSION_INCREMENT version increment"
           
+          # Increment version (and reset lower digits to zero)
+          # https://stackoverflow.com/questions/59435639/fix-shell-script-to-increment-semversion
+          read MAJOR MINOR PATCH < <(echo $PREVIOUS_VERSION | ( IFS=".$IFS" ; read a b c && echo $a $b $c ))
           if [ "$VERSION_INCREMENT" = "minor" ]; then
-            indexToIncrement=2
-            elif [ "$$VERSION_INCREMENT" = "major" ]; then
-            indexToIncrement=1
-            elif [ "$VERSION_INCREMENT" = "patch" ]; then
-            indexToIncrement=3
+            MINOR="$((MINOR + 1))"
+            PATCH="0"
+          elif [ "$VERSION_INCREMENT" = "major" ]; then
+            MAJOR="$((MAJOR + 1))"
+            MINOR="0"
+            PATCH="0"
+          elif [ "$VERSION_INCREMENT" = "patch" ]; then
+            PATCH="$((PATCH + 1))"
           fi
+          RELEASE_VERSION=$(echo "${MAJOR}.${MINOR}.${PATCH}")
 
-          mvn -B versions:set -DnextSnapshot -DnextSnapshotIndexToIncrement=$indexToIncrement          
-          mvn -B versions:set -DremoveSnapshot
-          
-          RELEASE_VERSION=`mvn -B help:evaluate -Dexpression=project.version -q -DforceStdout`
           echo "Release version is $RELEASE_VERSION"
 
+          mvn -B versions:set -DnewVersion=$RELEASE_VERSION
+          
           MAVEN_SKIP_TESTS_ARGUMENT=""
           if [ "${{ inputs.skip-tests }}" = "true" ]; then
             MAVEN_SKIP_TESTS_ARGUMENT="-DskipTests"
