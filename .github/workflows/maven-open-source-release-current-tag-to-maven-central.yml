@@ -16,7 +16,8 @@ on:
       server-id:
         description: "server id used in pom to reference generated settings.xml"
         type: string
-        required: true
+        required: false
+        default: ossrh
       skip-tests:
         description: Skip test
         required: false
