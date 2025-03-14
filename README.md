@@ -1,31 +1,54 @@
 # abt-gha-public
 
-This repository contains workflows used to verify, build and deploy artifacts in projects used by
-account based ticketing (ABT) team at Entur.
+This repository contains workflows used to verify, build and deploy artifacts in projects used by  account based ticketing (ABT) team at Entur.
 
-## Maven
+# Versioning strategies
+These workflows support various versioning strategies:
+
+ * release tag
+   * extracts version from the tag name
+   * passes version to build via a command-line parameter
+   * does not modify any files in the repository
+ * release branch: determine version from a previous tag
+   * extract and increment version from latest tagged version
+     * i.e. release-1.2.3 -> 1.2.3
+   * increment controlled via commit message
+     * __[patch]__: 1.2.3 -> 1.2.4
+     * __[minor]__: 1.2.3 -> 1.3.0
+     * __[major]__: 1.2.3 -> 2.0.0
+   * passes version to build via a command-line parameter
+   * does not commit any files, only creates a new tag
+
+### Maven
 Builder using Maven (i.e. not wrapper)
 
 Workflows:
-  * validate-jar-maven-sona.yml
+  * [maven-open-source-verify](.github/workflows/maven-open-source-verify.yml)
     * Builds project with Maven
-  * maven-release-sona.yml __Note: this job can leak secrets if run on untrusted code__
+  * [maven-open-source-increment-version-and-release-to-maven-central](.github/workflows/maven-open-source-increment-version-and-release-to-maven-central.yml) __Note: this job can leak secrets if run on untrusted code__
     * Increment version based on incrementing latest previous release
+      * Add __[patch]__, __[minor]__ or __[major]__ to commit message to control increment (patch is the default)
     * Publish artifacts to Maven Central (Sonatype)
-    * Creates tag
+    * Creates and commits tag
+  * [maven-open-source-release-current-tag-to-maven-central](.github/workflows/maven-open-source-release-current-tag-to-maven-central.yml) __Note: this job can leak secrets if run on untrusted code__
+    * Extracts version from the current tag
+    * Publish artifacts to Maven Central (Sonatype)
 
-## Gradle
+#### Dry-run
+Upload to Maven central without close/releasing staging repo: Set `autoReleaseAfterClose` to `false` in `nexus-staging-maven-plugin` configuration.
+
+### Gradle
 Build using Gradle wrapper.
 
-Workflows: 
- * validate-jar-gradle-sona.yml
+Workflows:
+ * [gradle-open-source-verify](.github/workflows/gradle-open-source-verify.yml)
    * Builds project with gradle 
- * gradle-release-sona.yml __Note: this job can leak secrets if run on untrusted code__ 
+ * [gradle-open-source-increment-version-and-release-to-maven-central](.github/workflows/gradle-open-source-increment-version-and-release-to-maven-central.yml) __Note: this job can leak secrets if run on untrusted code__ 
    * Increment version based on incrementing latest previous release
-     * Add [patch], [minor] or [major] to commit message to control increment (patch is the default)
+     * Add __[patch]__, __[minor]__ or __[major]__ to commit message to control increment (patch is the default)
    * Publish artifacts to Maven Central (Sonatype)
-   * Creates tag 
- * gradle-release-tag-sona.yml __Note: this job can leak secrets if run on untrusted code__
+   * Creates and commits tag
+ * [gradle-open-source-release-current-tag-to-maven-central](.github/workflows/gradle-open-source-release-current-tag-to-maven-central.yml) __Note: this job can leak secrets if run on untrusted code__
    * Extracts version from the current tag
    * Publish artifacts to Maven Central (Sonatype)
 
@@ -46,4 +69,16 @@ publications {
     }
 }
 ```
+
+#### Dry-run
+Upload to Maven central without close/releasing staging repo: Set `tasks` parameter `build publishToSonatype`.
+
+# Usage
+Java version and runner will naturally change from time to time, so either
+
+ * use the workflow commit hash as version
+ * specify `java-version` and `runs-on` parameters
+
+
+
 
