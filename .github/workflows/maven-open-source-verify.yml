@@ -3,9 +3,10 @@ on:
   workflow_call:
     inputs:
       java-version:
-        description: Java Runtime Version
-        required: true
+        description: "Java Runtime Version"
+        required: false
         type: string
+        default: 21
       commands:
         description: Maven command
         required: false

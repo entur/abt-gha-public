@@ -23,14 +23,14 @@ These workflows support various versioning strategies:
 Builder using Maven (i.e. not wrapper)
 
 Workflows:
-  * maven-open-source-verify
+  * [maven-open-source-verify](.github/workflows/maven-open-source-verify.yml)
     * Builds project with Maven
-  * maven-open-source-increment-version-and-release-to-maven-central __Note: this job can leak secrets if run on untrusted code__
+  * [maven-open-source-increment-version-and-release-to-maven-central](.github/workflows/maven-open-source-increment-version-and-release-to-maven-central.yml) __Note: this job can leak secrets if run on untrusted code__
     * Increment version based on incrementing latest previous release
       * Add __[patch]__, __[minor]__ or __[major]__ to commit message to control increment (patch is the default)
     * Publish artifacts to Maven Central (Sonatype)
     * Creates and commits tag
-  * maven-open-source-release-current-tag-to-maven-central __Note: this job can leak secrets if run on untrusted code__
+  * [maven-open-source-release-current-tag-to-maven-central](.github/workflows/maven-open-source-release-current-tag-to-maven-central.yml) __Note: this job can leak secrets if run on untrusted code__
     * Extracts version from the current tag
     * Publish artifacts to Maven Central (Sonatype)
 
@@ -41,14 +41,14 @@ Upload to Maven central without close/releasing staging repo: Set `autoReleaseAf
 Build using Gradle wrapper.
 
 Workflows:
- * gradle-open-source-verify
+ * [gradle-open-source-verify](.github/workflows/gradle-open-source-verify.yml)
    * Builds project with gradle 
- * gradle-open-source-increment-version-and-release-to-maven-central __Note: this job can leak secrets if run on untrusted code__ 
+ * [gradle-open-source-increment-version-and-release-to-maven-central](.github/workflows/gradle-open-source-increment-version-and-release-to-maven-central.yml) __Note: this job can leak secrets if run on untrusted code__ 
    * Increment version based on incrementing latest previous release
      * Add __[patch]__, __[minor]__ or __[major]__ to commit message to control increment (patch is the default)
    * Publish artifacts to Maven Central (Sonatype)
    * Creates and commits tag
- * gradle-open-source-release-current-tag-to-maven-central __Note: this job can leak secrets if run on untrusted code__
+ * [gradle-open-source-release-current-tag-to-maven-central](.github/workflows/gradle-open-source-release-current-tag-to-maven-central.yml) __Note: this job can leak secrets if run on untrusted code__
    * Extracts version from the current tag
    * Publish artifacts to Maven Central (Sonatype)
 
