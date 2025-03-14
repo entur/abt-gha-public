@@ -28,6 +28,16 @@ on:
         required: false
         type: string
         default: "release-"
+      runs-on:
+        description: "Runner"
+        required: false
+        type: string
+        default: "ubuntu-24.04"
+      java-distribution:
+        description: "Java distribution for setup-java"
+        required: false
+        type: string
+        default: "liberica"
     secrets:
       SONATYPE_AUTH_USER:
         required: true
@@ -52,7 +62,7 @@ jobs:
     outputs:
       version: ${{ steps.publish.outputs.version }}
       tag: ${{ steps.publish.outputs.tag }}
-    runs-on: ubuntu-24.04
+    runs-on: ${{ inputs.runs-on }}
     steps:
       - uses: actions/checkout@v4
         with:
@@ -62,7 +72,7 @@ jobs:
         uses: actions/setup-java@v4
         with:
           java-version: ${{ inputs.java-version }}
-          distribution: liberica
+          distribution: ${{ inputs.java-distribution }}
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@v4
       - name: Publish
