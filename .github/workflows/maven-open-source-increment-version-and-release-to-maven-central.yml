@@ -140,6 +140,8 @@ jobs:
           echo "Release version is $RELEASE_VERSION"
 
           mvn -B versions:set -DnewVersion=$RELEASE_VERSION
+
+          echo "pom version updated to $RELEASE_VERSION"
           
           MAVEN_SKIP_TESTS_ARGUMENT=""
           if [ "${{ inputs.skip-tests }}" = "true" ]; then
