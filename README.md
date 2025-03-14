@@ -73,3 +73,12 @@ publications {
 #### Dry-run
 Upload to Maven central without close/releasing staging repo: Set `tasks` parameter `build publishToSonatype`.
 
+# Usage
+Java version and runner will naturally change from time to time, so either
+
+ * use the workflow commit hash as version
+ * specify `java-version` and `runs-on` parameters
+
+
+
+
