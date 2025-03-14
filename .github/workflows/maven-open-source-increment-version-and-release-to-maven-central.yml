@@ -164,7 +164,8 @@ jobs:
           
           # create summary
           echo "$COMMIT_MESSAGE" >> $GITHUB_STEP_SUMMARY
-          echo "Release $CURRENT_VERSION published to Maven Central" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY # this is a blank line
+          echo ":green_circle: Release $RELEASE_VERSION published to Maven Central." >> $GITHUB_STEP_SUMMARY
 
           # workflow output
           echo "version=$RELEASE_VERSION" >> $GITHUB_OUTPUT
