@@ -90,6 +90,11 @@ jobs:
           fi
           echo "Previous release tag is: $PREVIOUS_TAG"
           
+          REL_LEN=$(echo ${{ inputs.release-prefix }} | wc -c | xargs)
+          PREVIOUS_VERSION=$(echo $PREVIOUS_TAG | cut -c ${REL_LEN}-)
+
+          echo "Previous release version is: $PREVIOUS_VERSION"
+
           COMMIT_MESSAGE=$(git log --format="%B" -n 1)
           # default version increment is patch
           VERSION_INCREMENT="patch"
@@ -116,7 +121,7 @@ jobs:
             done <<< "$BRACKET_PAYLOADS"
           fi
           echo "Apply $VERSION_INCREMENT version increment"
-          
+
           # Increment version (and reset lower digits to zero)
           # https://stackoverflow.com/questions/59435639/fix-shell-script-to-increment-semversion
           read MAJOR MINOR PATCH < <(echo $PREVIOUS_VERSION | ( IFS=".$IFS" ; read a b c && echo $a $b $c ))
@@ -131,7 +136,7 @@ jobs:
             PATCH="$((PATCH + 1))"
           fi
           RELEASE_VERSION=$(echo "${MAJOR}.${MINOR}.${PATCH}")
-
+          
           echo "Release version is $RELEASE_VERSION"
 
           mvn -B versions:set -DnewVersion=$RELEASE_VERSION
