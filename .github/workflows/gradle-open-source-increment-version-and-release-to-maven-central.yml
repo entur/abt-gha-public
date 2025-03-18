@@ -4,22 +4,22 @@ on:
   workflow_call:
     inputs:
       java-version:
-        description: Java Runtime Version
+        description: "Java Runtime Version"
         required: false
         type: string
         default: 21
       tasks:
-        description: Gradle task parameters
+        description: "Gradle task parameters"
         required: false
         type: string
         default: build publishToSonatype closeAndReleaseSonatypeStagingRepository
       log-level:
-        description: Optional Gradle log level (debug, info, warn)
+        description: "Optional Gradle log level (debug, info, warn)"
         required: false
         type: string
         default: ""
       skip-tests:
-        description: Skip test
+        description: "Skip test"
         required: false
         type: boolean
         default: false
@@ -66,7 +66,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
           fetch-tags: true
       - name: Set up Java ${{ inputs.java-version }}
         uses: actions/setup-java@v4
@@ -158,7 +157,7 @@ jobs:
           if [ "${{ inputs.skip-tests }}" = "true" ]; then
             GRADLE_SKIP_TESTS_ARGUMENT="-x test"
             echo "Note: Skipping tests"
-          fi          
+          fi
           
           echo -n $SONATYPE_GPG_KEY | base64 --decode | gpg --batch --no-tty --import --yes
           ./gradlew ${{ inputs.tasks }} $GRADLE_SKIP_TESTS_ARGUMENT -Pversion=$RELEASE_VERSION -Psigning.gnupg.passphrase=$SONATYPE_GPG_KEY_PASSWORD -Psigning.gnupg.keyName=$SONATYPE_GPG_KEY_NAME -PsonatypeUsername=$SONATYPE_USERNAME -PsonatypePassword=$SONATYPE_PASSWORD $GRADLE_LOG_ARGUMENT --stacktrace
@@ -166,7 +165,7 @@ jobs:
           RELEASE_TAG=${{ inputs.release-prefix }}${RELEASE_VERSION}
           git config user.name "Github Bot"
           git config user.email "github@entur.org"
-          git tag -a $RELEASE_TAG HEAD -m "Release $RELEASE_VERSION" 
+          git tag -a $RELEASE_TAG HEAD -m "Release $RELEASE_VERSION"
           git push --tags
           
           # create summary

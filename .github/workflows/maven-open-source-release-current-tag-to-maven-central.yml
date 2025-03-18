@@ -3,6 +3,10 @@ description: "Publish release artifact to Maven Central for a Maven library proj
 on:
   workflow_call:
     inputs:
+      ref:
+        description: "The branch, tag or SHA to checkout. See checkout action for more details."
+        type: string
+        required: false
       java-version:
         description: "Java Runtime Version"
         required: false
@@ -19,12 +23,12 @@ on:
         required: false
         default: ossrh
       skip-tests:
-        description: Skip test
+        description: "Skip test"
         required: false
         type: boolean
         default: false
       commands:
-        description: Maven command parameters
+        description: "Maven command parameters"
         required: false
         type: string
         default: "-B clean deploy"
@@ -65,8 +69,13 @@ jobs:
     runs-on: ${{ inputs.runs-on }}
     steps:
       - uses: actions/checkout@v4
+        if: inputs.ref == ''
         with:
-          fetch-depth: 0
+          fetch-tags: true
+      - uses: actions/checkout@v4
+        if: inputs.ref != ''
+        with:
+          ref: inputs.ref
           fetch-tags: true
       - name: Set up Java ${{ inputs.java-version }}
         uses: actions/setup-java@v4
@@ -106,7 +115,7 @@ jobs:
             echo "Note: Skipping tests"
           fi
 
-          # prepare key          
+          # prepare key
           echo -n $SONATYPE_GPG_KEY | base64 --decode | gpg --batch --no-tty --import --yes
 
           echo "Releasing $RELEASE_VERSION .."

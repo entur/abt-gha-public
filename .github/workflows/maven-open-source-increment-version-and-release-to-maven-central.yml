@@ -19,12 +19,12 @@ on:
         required: false
         default: ossrh
       skip-tests:
-        description: Skip test
+        description: "Skip test"
         required: false
         type: boolean
         default: false
       commands:
-        description: Maven command parameters
+        description: "Maven command parameters"
         required: false
         type: string
         default: "-B clean deploy"
@@ -66,7 +66,6 @@ jobs:
     steps:
       - uses: actions/checkout@v4
         with:
-          fetch-depth: 0
           fetch-tags: true
       - name: Set up Java ${{ inputs.java-version }}
         uses: actions/setup-java@v4

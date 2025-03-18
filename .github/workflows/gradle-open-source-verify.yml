@@ -3,17 +3,17 @@ on:
   workflow_call:
     inputs:
       java-version:
-        description: Java Runtime Version
+        description: "Java Runtime Version"
         required: false
         type: string
         default: 21
       tasks:
-        description: Gradle task parameters
+        description: "Gradle task parameters"
         required: false
         type: string
         default: build
       log-level:
-        description: Gradle log level
+        description: "Gradle log level"
         required: false
         type: string
         default: ""
