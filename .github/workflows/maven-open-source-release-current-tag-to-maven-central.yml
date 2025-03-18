@@ -43,10 +43,10 @@ on:
         type: string
         default: "liberica"
       fetch-depth:
-        description: 'Number of commits to fetch. 0 indicates all history for all branches and tags.'
+        description: "Number of commits to fetch. 0 indicates all history for all branches and tags."
         required: false
         type: string
-        default: 1
+        default: "1"
     secrets:
       SONATYPE_AUTH_USER:
         required: true
