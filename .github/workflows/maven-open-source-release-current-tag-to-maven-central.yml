@@ -110,7 +110,7 @@ jobs:
           REL_PREFIX: ${{ inputs.release-prefix }}
         run: |
           echo "Preparing to publish current tag to Maven Central"
-          RELEASE_TAG=$(git symbolic-ref -q --short HEAD || git describe --tags --exact-match --match "${{ inputs.release-prefix }}*")
+          RELEASE_TAG=$(git symbolic-ref -q --short HEAD || git describe --tags --exact-match --match "${{ inputs.release-prefix }}*" HEAD)
           echo "Release tag is $RELEASE_TAG"
           REL_LEN=$(echo ${{ inputs.release-prefix }} | wc -c | xargs)
           RELEASE_VERSION=$(echo $RELEASE_TAG | cut -c ${REL_LEN}-)
