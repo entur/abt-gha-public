@@ -175,7 +175,7 @@ jobs:
           git config user.name "Github Bot"
           git config user.email "github@entur.org"
           git tag -a $RELEASE_TAG HEAD -m "Release $RELEASE_VERSION" 
-          git push --tags
+          git push origin $RELEASE_TAG
           
           # create summary
           echo "$COMMIT_MESSAGE" >> $GITHUB_STEP_SUMMARY
