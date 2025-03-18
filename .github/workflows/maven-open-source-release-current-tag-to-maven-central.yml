@@ -7,6 +7,7 @@ on:
         description: "The branch, tag or SHA to checkout. See checkout action for more details."
         type: string
         required: false
+        default: ''
       java-version:
         description: "Java Runtime Version"
         required: false
