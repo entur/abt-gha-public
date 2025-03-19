@@ -176,7 +176,7 @@ Maven:
  on:
    push:
      tags:
-       - '*'
+       - 'release-*'
 
  jobs:
    deploy-tag-maven:
@@ -191,7 +191,7 @@ Gradle:
  on:
    push:
      tags:
-       - '*'
+       - 'release-*'
 
  jobs:
    deploy-tag-gradle:
