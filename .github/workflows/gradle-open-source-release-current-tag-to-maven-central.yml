@@ -104,7 +104,7 @@ jobs:
         run: |
           echo "Preparing to publish current tag to Maven Central"
           if [ -z "${{ inputs.ref }}" ]; then
-            RELEASE_TAG=$(git describe --tags --exact-match --match "${{ inputs.release-prefix }}*" HEAD)
+            RELEASE_TAG=$(git symbolic-ref -q --short HEAD || git describe --tags --exact-match --match "${{ inputs.release-prefix }}*" HEAD)
           else 
             RELEASE_TAG="${{ inputs.ref }}"
           fi
