@@ -103,7 +103,11 @@ jobs:
           SONATYPE_GPG_KEY_PASSWORD: ${{ secrets.SONATYPE_GPG_KEY_PASSWORD }}
         run: |
           echo "Preparing to publish current tag to Maven Central"
-          RELEASE_TAG=$(git describe --tags --exact-match --match "${{ inputs.release-prefix }}*" HEAD)
+          if [ -z "${{ inputs.inputs.ref }}" ]; then
+            RELEASE_TAG=$(git describe --tags --exact-match --match "${{ inputs.release-prefix }}*" HEAD)
+          else 
+            RELEASE_TAG="${{ inputs.inputs.ref }}"
+          fi
           echo "Release tag is $RELEASE_TAG"
           REL_LEN=$(echo ${{ inputs.release-prefix }} | wc -c | xargs)
           RELEASE_VERSION=$(echo $RELEASE_TAG | cut -c ${REL_LEN}-)
