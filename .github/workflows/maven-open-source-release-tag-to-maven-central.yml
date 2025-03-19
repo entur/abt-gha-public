@@ -109,7 +109,7 @@ jobs:
           SONATYPE_GPG_KEY_NAME: ${{ secrets.SONATYPE_GPG_KEY_NAME }}
           REL_PREFIX: ${{ inputs.release-prefix }}
         run: |
-          echo "Preparing to publish current tag to Maven Central"
+          echo "Preparing to publish tag to Maven Central"
           if [ -z "${{ inputs.ref }}" ]; then
             RELEASE_TAG=$(git describe --tags --exact-match --match "${{ inputs.release-prefix }}*" HEAD)
           else 

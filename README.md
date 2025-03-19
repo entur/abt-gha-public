@@ -29,12 +29,12 @@ Workflows:
     * Increment version based on incrementing latest previous release
       * Add __[patch]__, __[minor]__ or __[major]__ to commit message to control increment (patch is the default)
     * Publish artifacts to Maven Central (Sonatype)
-    * Creates and commits tag
-  * [maven-open-source-release-current-tag-to-maven-central](.github/workflows/maven-open-source-release-current-tag-to-maven-central.yml) __Note: this job can leak secrets if run on untrusted code__
-    * Extracts version from the current tag
+    * Adds tag
+  * [maven-open-source-release-tag-to-maven-central](.github/workflows/maven-open-source-release-tag-to-maven-central.yml) __Note: this job can leak secrets if run on untrusted code__
+    * Extracts version from the current tag, or from an input parameter.
     * Publish artifacts to Maven Central (Sonatype)
 
-#### Dry-run
+#### Maven dry-run
 Upload to Maven central without close/releasing staging repo: Set `autoReleaseAfterClose` to `false` in `nexus-staging-maven-plugin` configuration.
 
 ### Gradle
@@ -47,9 +47,9 @@ Workflows:
    * Increment version based on incrementing latest previous release
      * Add __[patch]__, __[minor]__ or __[major]__ to commit message to control increment (patch is the default)
    * Publish artifacts to Maven Central (Sonatype)
-   * Creates and commits tag
- * [gradle-open-source-release-current-tag-to-maven-central](.github/workflows/gradle-open-source-release-current-tag-to-maven-central.yml) __Note: this job can leak secrets if run on untrusted code__
-   * Extracts version from the current tag
+   * Adds tag
+ * [gradle-open-source-release-tag-to-maven-central](.github/workflows/gradle-open-source-release-tag-to-maven-central.yml) __Note: this job can leak secrets if run on untrusted code__
+   * Extracts version from the current tag, or from an input parameter.
    * Publish artifacts to Maven Central (Sonatype)
 
 Note that projects which use the release flows must propagate the command-line `version` property to artifact version in the Gradle publishing configuration, i.e. like this:
@@ -70,15 +70,166 @@ publications {
 }
 ```
 
-#### Dry-run
+#### Gradle dry-run
 Upload to Maven central without close/releasing staging repo: Set `tasks` parameter `build publishToSonatype`.
 
-# Usage
-Java version and runner will naturally change from time to time, so either
+# Workflow usage
+Workflow, java version and runner will naturally change from time to time, so you might consider to
 
- * use the workflow commit hash as version
+ * use the workflow full version / commit hash as version
  * specify `java-version` and `runs-on` parameters
 
+Also consider to selectively propagate secrets if necessary.
+
+## Pull-requests
+Does not use secrets.
+
+Maven:
+ ```yaml
+ name: PR verify maven
+ on:
+   pull_request:
+     types:
+       - synchronize
+       - opened
+
+ jobs:
+   pr-verify-maven:
+     uses: entur/abt-gha-public/.github/workflows/maven-open-source-verify.yml@vx.x.x
+ ```
+
+Gradle:
+
+ ```yaml
+ name: pr verify gradle
+ on:
+   pull_request:
+     types:
+       - synchronize
+       - opened
+
+ jobs:
+   pr-verify-gradle:
+     uses: entur/abt-gha-public/.github/workflows/gradle-open-source-verify.yml@vx.x.x
+ ```
 
 
+## Manual release from main with version increment
+Uses secrets.
 
+Maven:
+
+```yaml
+name: deploy main maven manual
+on:
+  workflow_dispatch:
+    inputs:
+      version-increment:
+        description: 'Version-increment'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+jobs:
+  deploy-tag-maven:
+    uses: entur/abt-gha-public/.github/workflows/maven-open-source-increment-version-and-release-to-maven-central.yml@vx.x.x
+    secrets: inherit
+    with:
+      version-increment: ${{ inputs.version-increment }}
+
+```
+
+Gradle:
+
+```yaml
+name: deploy tag gradle manual
+on:
+  workflow_dispatch:
+    inputs:
+      version-increment:
+        description: 'Version-increment'
+        required: true
+        type: choice
+        options:
+          - patch
+          - minor
+          - major
+
+jobs:
+  deploy-tag-gradle:
+    uses: entur/abt-gha-public/.github/workflows/gradle-open-source-increment-version-and-release-to-maven-central.yml@vx.x.x
+    secrets: inherit
+    with: 
+      version-increment: ${{ inputs.version-increment }}
+```
+
+## Release on tag
+Uses secrets.
+
+Maven:
+
+ ```yaml
+ name: deploy tag maven
+ on:
+   push:
+     tags:
+       - '*'
+
+ jobs:
+   deploy-tag-maven:
+     uses: entur/abt-gha-public/.github/workflows/maven-open-source-release-tag-to-maven-central.yml@vx.x.x
+     secrets: inherit
+ ```
+
+Gradle:
+
+ ```yaml
+ name: deploy tag gradle
+ on:
+   push:
+     tags:
+       - '*'
+
+ jobs:
+   deploy-tag-gradle:
+     uses: entur/abt-gha-public/.github/workflows/gradle-open-source-release-tag-to-maven-central.yml@vx.x.x
+     secrets: inherit
+ ```
+
+## Release on main
+Uses secrets.
+
+Maven:
+
+ ```yaml
+name: deploy main maven
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy-main-maven:
+    if: "!contains(github.event.head_commit.message, '[skip-release]')"
+    uses: entur/abt-gha-public/.github/workflows/maven-open-source-increment-version-and-release-to-maven-central.yml@vx.x.x
+    secrets: inherit
+ ```
+
+Gradle:
+
+ ```yaml
+name: deploy main gradle
+on:
+  push:
+    branches:
+      - main
+
+jobs:
+  deploy-main-gradle:
+    if: "!contains(github.event.head_commit.message, '[skip-release]')"
+    uses: entur/abt-gha-public/.github/workflows/gradle-open-source-increment-version-and-release-to-maven-central.yml@vx.x.x
+    secrets: inherit
+ ```
