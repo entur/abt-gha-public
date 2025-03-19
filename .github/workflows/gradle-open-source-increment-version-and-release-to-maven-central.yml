@@ -43,6 +43,11 @@ on:
         required: false
         type: string
         default: "0"
+      version-increment:
+        description: "Version increment. Default to patch. Can be overridden in commit message."
+        required: false
+        type: string
+        default: "patch"
     secrets:
       SONATYPE_AUTH_USER:
         required: true
@@ -104,28 +109,33 @@ jobs:
 
           COMMIT_MESSAGE=$(git log --format="%B" -n 1)
           # default version increment is patch
-          VERSION_INCREMENT="patch"
           
-          # check whether commit message contains bracket
-          if [[ $COMMIT_MESSAGE =~ \[ ]]; then
-            # extract bracket contents (supports multiple brackets)
-            BRACKET_PAYLOADS=$(echo "$COMMIT_MESSAGE" | grep -Po "(?<=\[)[^\]]*(?=\])")
+          if [ "${{ inputs.version-increment }}" = "" ]; then
+            VERSION_INCREMENT="patch"
             
-            # iterate over bracket payloads
-            while IFS= read -r BRACKET_PAYLOAD; do
-              # trim whitespace and go lowercase
-              BRACKET_PAYLOAD_TRIMMED=$(echo "$BRACKET_PAYLOAD" | tr -d '[:blank:]')
-              BRACKET_PAYLOAD_TRIMMED_LOWERCASE=$(tr '[:upper:]' '[:lower:]' <<<"$BRACKET_PAYLOAD_TRIMMED" )
+            # check whether commit message contains bracket
+            if [[ $COMMIT_MESSAGE =~ \[ ]]; then
+              # extract bracket contents (supports multiple brackets)
+              BRACKET_PAYLOADS=$(echo "$COMMIT_MESSAGE" | grep -Po "(?<=\[)[^\]]*(?=\])")
               
-              # detect type      
-              if [ "$BRACKET_PAYLOAD_TRIMMED_LOWERCASE" = "minor" ]; then
-                VERSION_INCREMENT="minor"
-              elif [ "$BRACKET_PAYLOAD_TRIMMED_LOWERCASE" = "major" ]; then
-                VERSION_INCREMENT="major"
-              elif [ "$BRACKET_PAYLOAD_TRIMMED_LOWERCASE" = "patch" ]; then
-                VERSION_INCREMENT="patch"
-              fi
-            done <<< "$BRACKET_PAYLOADS"
+              # iterate over bracket payloads
+              while IFS= read -r BRACKET_PAYLOAD; do
+                # trim whitespace and go lowercase
+                BRACKET_PAYLOAD_TRIMMED=$(echo "$BRACKET_PAYLOAD" | tr -d '[:blank:]')
+                BRACKET_PAYLOAD_TRIMMED_LOWERCASE=$(tr '[:upper:]' '[:lower:]' <<<"$BRACKET_PAYLOAD_TRIMMED" )
+                
+                # detect type      
+                if [ "$BRACKET_PAYLOAD_TRIMMED_LOWERCASE" = "minor" ]; then
+                  VERSION_INCREMENT="minor"
+                elif [ "$BRACKET_PAYLOAD_TRIMMED_LOWERCASE" = "major" ]; then
+                  VERSION_INCREMENT="major"
+                elif [ "$BRACKET_PAYLOAD_TRIMMED_LOWERCASE" = "patch" ]; then
+                  VERSION_INCREMENT="patch"
+                fi
+              done <<< "$BRACKET_PAYLOADS"
+            fi
+          else 
+            VERSION_INCREMENT="${{ inputs.version-increment }}"
           fi
           echo "Apply $VERSION_INCREMENT version increment"
 
@@ -141,6 +151,9 @@ jobs:
             PATCH="0"
           elif [ "$VERSION_INCREMENT" = "patch" ]; then
             PATCH="$((PATCH + 1))"
+          else 
+            echo "Expected increment patch, minor or major, got $VERSION_INCREMENT"
+            exit 1
           fi
           RELEASE_VERSION=$(echo "${MAJOR}.${MINOR}.${PATCH}")
           
