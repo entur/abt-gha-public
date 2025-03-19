@@ -1,0 +1,205 @@
+name: Release to Maven Central
+description: "Publish release artifact to Maven Central for a Gradle library project. Increments the version based on the latest release tag. The project must propagate the command-line 'version' property to artifact version in the Gradle publishing configuration."
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        description: "Java Runtime Version"
+        required: false
+        type: string
+        default: 21
+      tasks:
+        description: "Gradle task parameters"
+        required: false
+        type: string
+        default: build publishToSonatype closeAndReleaseSonatypeStagingRepository
+      log-level:
+        description: "Optional Gradle log level (debug, info, warn)"
+        required: false
+        type: string
+        default: ""
+      skip-tests:
+        description: "Skip test"
+        required: false
+        type: boolean
+        default: false
+      release-prefix:
+        description: "Prefix for release tag"
+        required: false
+        type: string
+        default: "release-"
+      runs-on:
+        description: "Runner"
+        required: false
+        type: string
+        default: "ubuntu-24.04"
+      java-distribution:
+        description: "Java distribution for setup-java"
+        required: false
+        type: string
+        default: "liberica"
+      fetch-depth:
+        description: "Number of commits to fetch. 0 indicates all history for all branches and tags."
+        required: false
+        type: string
+        default: "0"
+      version-increment:
+        description: "Version increment. Default to patch. Can be overridden in commit message."
+        required: false
+        type: string
+        default: "patch"
+    secrets:
+      SONATYPE_AUTH_USER:
+        required: true
+      SONATYPE_AUTH_TOKEN:
+        required: true
+      SONATYPE_GPG_KEY:
+        required: true
+      SONATYPE_GPG_KEY_NAME:
+        required: true
+      SONATYPE_GPG_KEY_PASSWORD:
+        required: true
+    outputs:
+      version:
+        description: Release version
+        value: ${{ jobs.release.outputs.version }}
+      tag:
+        description: Release tag
+        value: ${{ jobs.release.outputs.tag }}
+
+jobs:
+  release:
+    outputs:
+      version: ${{ steps.publish.outputs.version }}
+      tag: ${{ steps.publish.outputs.tag }}
+    runs-on: ${{ inputs.runs-on }}
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-tags: true
+          fetch-depth: ${{ inputs.fetch-depth }}
+      - name: Set up Java ${{ inputs.java-version }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: ${{ inputs.java-distribution }}
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Publish
+        id: publish
+        env:
+          SONATYPE_USERNAME: ${{ secrets.SONATYPE_AUTH_USER }}
+          SONATYPE_PASSWORD: ${{ secrets.SONATYPE_AUTH_TOKEN }}
+          SONATYPE_GPG_KEY: ${{ secrets.SONATYPE_GPG_KEY }}
+          SONATYPE_GPG_KEY_NAME: ${{ secrets.SONATYPE_GPG_KEY_NAME }}
+          SONATYPE_GPG_KEY_PASSWORD: ${{ secrets.SONATYPE_GPG_KEY_PASSWORD }}
+        run: |
+          echo "Preparing release to Maven Central"
+          PREVIOUS_TAG=$(git tag -l --sort -version:refname "${{ inputs.release-prefix }}*" | head -n 1)
+          if [ "$PREVIOUS_TAG" = "" ]; then
+            echo "Expected a preexisting tag on the form '${{ inputs.release-prefix }}x.y.z' for automatic version increment"
+            exit 1
+          fi
+          echo "Previous release tag is: $PREVIOUS_TAG"
+          
+          REL_LEN=$(echo ${{ inputs.release-prefix }} | wc -c | xargs)
+          PREVIOUS_VERSION=$(echo $PREVIOUS_TAG | cut -c ${REL_LEN}-)
+
+          echo "Previous release version is: $PREVIOUS_VERSION"
+
+          COMMIT_MESSAGE=$(git log --format="%B" -n 1)
+          # default version increment is patch
+          
+          if [ "${{ inputs.version-increment }}" = "" ]; then
+            VERSION_INCREMENT="patch"
+            
+            # check whether commit message contains bracket
+            if [[ $COMMIT_MESSAGE =~ \[ ]]; then
+              # extract bracket contents (supports multiple brackets)
+              BRACKET_PAYLOADS=$(echo "$COMMIT_MESSAGE" | grep -Po "(?<=\[)[^\]]*(?=\])")
+              
+              # iterate over bracket payloads
+              while IFS= read -r BRACKET_PAYLOAD; do
+                # trim whitespace and go lowercase
+                BRACKET_PAYLOAD_TRIMMED=$(echo "$BRACKET_PAYLOAD" | tr -d '[:blank:]')
+                BRACKET_PAYLOAD_TRIMMED_LOWERCASE=$(tr '[:upper:]' '[:lower:]' <<<"$BRACKET_PAYLOAD_TRIMMED" )
+                
+                # detect type      
+                if [ "$BRACKET_PAYLOAD_TRIMMED_LOWERCASE" = "minor" ]; then
+                  VERSION_INCREMENT="minor"
+                elif [ "$BRACKET_PAYLOAD_TRIMMED_LOWERCASE" = "major" ]; then
+                  VERSION_INCREMENT="major"
+                elif [ "$BRACKET_PAYLOAD_TRIMMED_LOWERCASE" = "patch" ]; then
+                  VERSION_INCREMENT="patch"
+                fi
+              done <<< "$BRACKET_PAYLOADS"
+            fi
+          else 
+            VERSION_INCREMENT="${{ inputs.version-increment }}"
+          fi
+          echo "Apply $VERSION_INCREMENT version increment"
+
+          # Increment version (and reset lower digits to zero)
+          # https://stackoverflow.com/questions/59435639/fix-shell-script-to-increment-semversion
+          read MAJOR MINOR PATCH < <(echo $PREVIOUS_VERSION | ( IFS=".$IFS" ; read a b c && echo $a $b $c ))
+          if [ "$VERSION_INCREMENT" = "minor" ]; then
+            MINOR="$((MINOR + 1))"
+            PATCH="0"
+          elif [ "$VERSION_INCREMENT" = "major" ]; then
+            MAJOR="$((MAJOR + 1))"
+            MINOR="0"
+            PATCH="0"
+          elif [ "$VERSION_INCREMENT" = "patch" ]; then
+            PATCH="$((PATCH + 1))"
+          else 
+            echo "Expected increment patch, minor or major, got $VERSION_INCREMENT"
+            exit 1
+          fi
+          RELEASE_VERSION=$(echo "${MAJOR}.${MINOR}.${PATCH}")
+          
+          echo "Release version is $RELEASE_VERSION"
+          
+          GRADLE_LOG_ARGUMENT=""
+          # detect log level      
+          if [ "${{ inputs.log-level }}" = "info" ]; then
+            GRADLE_LOG_ARGUMENT="--info"
+            echo "Use info logging in Gradle build"
+          elif [ "${{ inputs.log-level }}" = "debug" ]; then
+            GRADLE_LOG_ARGUMENT="--debug"
+            echo "Use debug logging in Gradle build"
+          elif [ "${{ inputs.log-level }}" = "warn" ]; then
+            GRADLE_LOG_ARGUMENT="--warn"
+            echo "Use warn logging in Gradle build"
+          fi
+          
+          GRADLE_SKIP_TESTS_ARGUMENT=""
+          if [ "${{ inputs.skip-tests }}" = "true" ]; then
+            GRADLE_SKIP_TESTS_ARGUMENT="-x test"
+            echo "Note: Skipping tests"
+          fi
+          
+          echo -n $SONATYPE_GPG_KEY | base64 --decode | gpg --batch --no-tty --import --yes
+          ./gradlew ${{ inputs.tasks }} $GRADLE_SKIP_TESTS_ARGUMENT -Pversion=$RELEASE_VERSION -Psigning.gnupg.passphrase=$SONATYPE_GPG_KEY_PASSWORD -Psigning.gnupg.keyName=$SONATYPE_GPG_KEY_NAME -PsonatypeUsername=$SONATYPE_USERNAME -PsonatypePassword=$SONATYPE_PASSWORD $GRADLE_LOG_ARGUMENT --stacktrace
+          
+          RELEASE_TAG=${{ inputs.release-prefix }}${RELEASE_VERSION}
+          git config user.name "Github Bot"
+          git config user.email "github@entur.org"
+          git tag -a $RELEASE_TAG HEAD -m "Release $RELEASE_VERSION"
+          git push origin $RELEASE_TAG
+          
+          # create summary
+          echo "$COMMIT_MESSAGE" >> $GITHUB_STEP_SUMMARY
+          echo "" >> $GITHUB_STEP_SUMMARY # this is a blank line
+          echo ":tada: Published $RELEASE_VERSION to Maven Central." >> $GITHUB_STEP_SUMMARY
+          
+          # workflow output
+          echo "version=$RELEASE_VERSION" >> $GITHUB_OUTPUT
+          echo "tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
+      - name: Store build reports
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: reports
+          path: |
+            **/build/reports/
+            **/build/test-results/
