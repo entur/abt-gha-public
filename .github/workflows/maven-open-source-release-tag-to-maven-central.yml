@@ -32,7 +32,7 @@ on:
         description: "Maven command parameters"
         required: false
         type: string
-        default: "-B clean deploy"
+        default: "-B -Prelease clean deploy"
       runs-on:
         description: "Runner"
         required: false
