@@ -1,0 +1,59 @@
+name: Build Jar Gradle
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        description: "Java Runtime Version"
+        required: false
+        type: string
+        default: 21
+      channel-id:
+        description: "Slack channel-id to post notification to"
+        required: false
+        type: string
+        default: NO_ID
+
+jobs:
+  gradle-build:
+    if: github.event_name == 'push' && github.ref_name == 'main'
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK ${{ inputs.java-version }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: liberica
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Build with Gradle Wrapper
+        run: ./gradlew clean build
+        env:
+          MAVEN_USERNAME: ${{ secrets.ARTIFACTORY_AUTH_USER }}
+          MAVEN_PASSWORD: ${{ secrets.ARTIFACTORY_AUTH_TOKEN }}
+      - name: Archive Build Artifacts
+        if: success()
+        uses: actions/upload-artifact@v4
+        with:
+          name: app
+          path: build/libs
+          retention-days: 4
+          overwrite: true
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: build/test-results/test/*.xml
+          overwrite: true
+
+  post-fail-to-slack:
+    needs: gradle-build
+    if: failure() && inputs.channel-id != 'NO_ID'
+    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: "🔴 Release build failed for ${{ github.repository }}, requested by ${{ github.actor }}\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+    secrets: inherit

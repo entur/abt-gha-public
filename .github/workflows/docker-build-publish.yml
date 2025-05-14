@@ -1,0 +1,59 @@
+name: Docker Build Publish
+on:
+  workflow_call:
+    inputs:
+      dry-run:
+        description: If true, perform all actions apart from publish
+        required: false
+        type: string
+        default: false
+      channel-id:
+        description: "Slack channel-id to post notification to"
+        required: false
+        type: string
+        default: NO_ID
+
+jobs:
+  docker-build:
+    if: github.ref == 'refs/heads/main' || inputs.dry-run == 'true'
+    uses: entur/gha-docker/.github/workflows/build.yml@v1
+    with:
+      build_artifact_name: app
+      build_artifact_path: build/libs/
+
+  docker-scan:
+    needs: docker-build
+    uses: entur/gha-security/.github/workflows/docker-scan.yml@v2
+    with:
+      image_artifact: ${{ needs.docker-build.outputs.image_artifact }}
+
+  docker-push:
+    needs: docker-scan
+    if: inputs.dry-run == 'false'
+    uses: entur/gha-docker/.github/workflows/push.yml@v1
+
+  post-success-to-slack:
+    needs: docker-push
+    if: success() && inputs.channel-id != 'NO_ID'
+    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: "🟢 Image deploy success, requested by ${{ github.actor }}\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+    secrets: inherit
+
+  step-summary-info-success:
+    needs: docker-push
+    if: success()
+    runs-on: ubuntu-24.04
+    steps:
+      - run: |
+          echo "Image successfully deployed to docker repos" >> $GITHUB_STEP_SUMMARY
+
+  post-failure-to-slack:
+    needs: docker-push
+    if: failure() && inputs.channel-id != 'NO_ID'
+    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: "🔴 Image deploy failed, requested by ${{ github.actor }}\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+    secrets: inherit

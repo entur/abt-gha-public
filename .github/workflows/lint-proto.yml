@@ -1,0 +1,39 @@
+name: lint-proto.yml
+on:
+  workflow_call:
+    inputs:
+      channel-id:
+        description: "Slack channel-id to post notification to"
+        required: false
+        type: string
+        default: NO_ID
+
+jobs:
+  lint-proto:
+    name: Proto lint
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+      - name: Download buf binary
+        run: |
+          # Download bufbuild/buf from github
+          BIN="/usr/local/bin" && \
+          VERSION="1.47.2" && \
+          curl -sSL \
+          "https://github.com/bufbuild/buf/releases/download/v${VERSION}/buf-$(uname -s)-$(uname -m)" \
+          -o "${BIN}/buf" && \
+          chmod +x "${BIN}/buf"
+      - name: Check version and lint
+        run: |
+          buf --version
+          buf lint --exclude-path **/target
+          echo "Proto linting complete" >> $GITHUB_STEP_SUMMARY
+
+  post-to-slack-if-failure:
+    needs: lint-proto
+    if: failure() && inputs.channel-id != 'NO_ID'
+    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: "🟡 Lint-proto failed for ${{ github.event.pull_request.title }} \n ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+    secrets: inherit

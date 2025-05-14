@@ -1,0 +1,41 @@
+name: Do Linting
+on:
+  workflow_call:
+    inputs:
+      channel-id:
+        description: "Slack channel-id to post notification to"
+        required: false
+        type: string
+        default: NO_ID
+
+jobs:
+  terraform-lint:
+    uses: entur/gha-terraform/.github/workflows/lint.yml@v1
+
+  docker-lint:
+    uses: entur/gha-docker/.github/workflows/lint.yml@v1
+
+  helm-lint:
+    uses: entur/gha-helm/.github/workflows/lint.yml@v1
+    strategy:
+      matrix:
+        environment: [dev, tst, prd]
+    with:
+      environment: ${{ matrix.environment }}
+
+  step-summary-info-success:
+    needs: [helm-lint, docker-lint, terraform-lint]
+    if: success()
+    runs-on: ubuntu-24.04
+    steps:
+      - run: |
+          echo "Linting of Terraform, docker and helm done." >> $GITHUB_STEP_SUMMARY
+
+  post-to-slack-if-failure:
+    needs: [helm-lint, docker-lint, terraform-lint]
+    if: failure() && inputs.channel-id != 'NO_ID'
+    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: "🟡 Linting failed for ${{ github.repository }}\n${{ github.event.pull_request.title }} - ${{ github.event.pull_request.url }}"
+    secrets: inherit

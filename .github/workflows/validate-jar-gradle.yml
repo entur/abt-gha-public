@@ -1,0 +1,66 @@
+name: Validate Gradle Build
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        description: "Java Runtime Version"
+        required: false
+        type: string
+        default: 21
+      automerge-dependabot:
+        description: "If PR is from dependabot, should we auto-merge it?"
+        type: string
+        required: false
+        default: false
+      channel-id:
+        description: "Slack channel-id to post notification to"
+        required: false
+        type: string
+        default: NO_ID
+
+jobs:
+  validate-gradle-build:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up JDK ${{ inputs.java-version }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: liberica
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@v4
+      - name: Build with Gradle Wrapper
+        run: ./gradlew clean build
+        env:
+          MAVEN_USERNAME: ${{ secrets.ARTIFACTORY_AUTH_USER }}
+          MAVEN_PASSWORD: ${{ secrets.ARTIFACTORY_AUTH_TOKEN }}
+      - name: Upload test artifacts
+        uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: test-results
+          path: build/test-results/test/*.xml
+          overwrite: true
+
+  post-fail-to-slack:
+    needs: validate-gradle-build
+    if: failure() && inputs.channel-id != 'NO_ID'
+    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: "🟡 PR build failed for '${{ github.event.pull_request.title }}' - ${{ github.server_url }}/${{ github.repository }}/pull/${{ github.event.number }}"
+    secrets: inherit
+
+  auto-merge-if-dependabot-not-major:
+    needs: validate-gradle-build
+    uses: ./.github/workflows/auto-merge.yml
+    secrets: inherit
+    if: >
+      success() && inputs.automerge-dependabot == 'true' &&
+      github.event.pull_request.user.login == 'dependabot[bot]' &&
+      contains(github.event.pull_request.head.ref,'auto-merge-')
+    with:
+      channel-id: ${{ inputs.channel-id }}

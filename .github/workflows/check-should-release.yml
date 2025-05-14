@@ -1,0 +1,118 @@
+name: Check Should Release
+on:
+  workflow_call:
+    outputs:
+      release-project:
+        description: Should a release be done? (returns true or false)
+        value: ${{ jobs.should-release.outputs.release_project }}
+      release-reason:
+        description: Reason the release should happen
+        value: ${{ jobs.should-release.outputs.release_reason }}
+
+    inputs:
+      max-days:
+        description: max amount of days to hold unreleased non-skip commits
+        required: false
+        type: number
+        default: 7
+      max-commits:
+        description: max amount unreleased non-skip commits
+        required: false
+        type: number
+        default: 5
+      release-prefix:
+        description: Prefix for release tag
+        required: false
+        type: string
+        default: "release-"
+      channel-id:
+        description: "Slack channel-id to post notification to"
+        required: false
+        type: string
+        default: NO_ID
+
+jobs:
+  should-release:
+    outputs:
+      release_project: ${{ steps.evaluate-release.outputs.release_project }}
+      release_reason: ${{ steps.evaluate-release.outputs.release_reason }}
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Check if we should release
+        env:
+          MAX_COMMITS: ${{ inputs.max-commits }}
+          MAX_DAYS: ${{ inputs.max-days }}
+          RELEASE_PREFIX: ${{ inputs.release-prefix }}
+        id: evaluate-release
+        shell: pwsh
+        run: |
+          echo "## Results from **Check Should Release job**" >> $env:GITHUB_STEP_SUMMARY
+          function Set-Release-And-Exit {
+            param (
+              [string] $reason
+            )
+
+            echo "release_project=true" >> $env:GITHUB_OUTPUT
+            echo "release_reason=$reason" >> $env:GITHUB_OUTPUT
+            exit 0
+          }
+
+          # Parameters
+          $max_unreleased=$env:MAX_COMMITS
+          $release_days=$env:MAX_DAYS
+          $release_prefix=$env:RELEASE_PREFIX
+          echo "Params: $max_unreleased $release_days $release_prefix" >> $env:GTHUB_STEP_SUMMARY
+
+          # Find the hash of the latest release tag
+          $latest_release=git describe --tags --match "${release_prefix}*" --abbrev=0
+          $release_hash=git show --tags=false -s --format=%H "${latest_release}^{commit}"
+
+          echo "**Latest release:** $latest_release" >> $env:GITHUB_STEP_SUMMARY
+
+          # Find the latest commits, and the position of the latest release
+          $hashes=@( git log -100 --format=%H )
+          $release_pos=[Array]::IndexOf($hashes, $release_hash)
+
+          if ($release_pos -ge 45) { Set-Release-And-Exit "Latest release tag is too far down in git history" }
+
+          $count=$release_pos + 1
+
+          foreach ($line in $hashes[0..($releasePos-1)]) {
+            $commitmsg = git show -s --format=%B $line
+            if($commitmsg -notmatch "\[skip ci\]|\[ci skip\]|\[no ci\]|\[skip actions\]|\[actions skip\]|skip-checks:true|skip-checks: true") {
+              if ($count -eq 0) {
+                $release = $true
+                break
+              }
+              $count--
+            }
+          }
+
+          echo "**Unreleased non-skip commits:** $COUNT" >> $env:GITHUB_STEP_SUMMARY
+          # Do we have more unreleased "non-skip" commits than we want?
+          if ($count -ge $max_unreleased) { Set-Release-And-Exit "Too many unreleased non-skip commits" }
+
+          $latest_release_time=git log -1 --format=%at $latest_release
+          $days_since=[Math]::Floor(([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - $latest_release_time) / 86400)
+          echo "**Days since latest release:** $days_since" >> $env:GITHUB_STEP_SUMMARY
+          if ($days_since -ge $release_days -And $count -ge 1) { 
+            Set-Release-And-Exit "Too many days since latest release, with unreleased non-skip commit" 
+          }
+
+          echo "release_project=false" >> $env:GITHUB_OUTPUT
+          echo "release_reason=no reason" >> $env:GITHUB_OUTPUT
+          echo "We are not suggesting a new release" >> $env:GITHUB_STEP_SUMMARY
+
+  post-to-slack-if-non-pull-request:
+    needs: should-release
+    if: failure() && inputs.channel-id != 'NO_ID'
+    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: "🟡 Release evaluation script failed for ${{ github.repository }}\n ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+    secrets: inherit
