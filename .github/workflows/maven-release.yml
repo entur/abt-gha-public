@@ -24,6 +24,7 @@ on:
 
 jobs:
   maven-release:
+    if: github.event_name == 'push' && github.ref_name == 'main'
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v4

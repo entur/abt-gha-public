@@ -61,6 +61,8 @@ jobs:
       message: ${{ steps.evaluate.outputs.message }}
     steps:
       - uses: actions/checkout@v4
+        with:
+          fetch-dept: 0
       - name: Dependabot branch count
         id: evaluate
         shell: pwsh
@@ -68,21 +70,13 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           $stale=0
-          foreach ($line in @(git branch -r --no-merge | grep -v HEAD)) {
-            $dateline += git log --no-merges -n 1 --format="%ci, %cr, %an, %ae, " $line.strip
-            # This will not count stale branches that are "x years and 0 or 1 month", but that
-            # is acceptable for the usage here, you are warned for 10 months, what is 2 without...
-            if ($dateline -contains "day") {
+          foreach ($line in @(git branch --no-merge | grep -v HEAD)) {
+            $dateline = git log -n 1 --format="%cr" $line.strip
+            # match lines that contains "months" (2 or more months)
+            # or "year" (also matches years) for any branch over a year old
+            if ($dateline -match "year") {
               $stale++
             }
-          }
-
-          $merged = @( git branch -r --merged ).length
-
-          if ($merged -gt 0 -or $stale -gt -0) {
-            echo "message=has $merged merged branches and $stale stale branches, please tidy up" >> $env:GITHUB_OUTPUT
-          } else {
-            echo "message=no_message" >> $env:GITHUB_OUTPUT
           }
 
   post-to-slack:
