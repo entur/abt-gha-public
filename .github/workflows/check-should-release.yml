@@ -100,7 +100,7 @@ jobs:
           $latest_release_time=git log -1 --format=%at $latest_release
           $days_since=[Math]::Floor(([DateTimeOffset]::UtcNow.ToUnixTimeSeconds() - $latest_release_time) / 86400)
           echo "**Days since latest release:** $days_since" >> $env:GITHUB_STEP_SUMMARY
-          if ($days_since -ge $release_days -And $count -ge 1) { 
+          if ($days_since -ge $release_days -And $count -ge 1) {
             Set-Release-And-Exit "Too many days since latest release, with unreleased non-skip commit" 
           }
 
