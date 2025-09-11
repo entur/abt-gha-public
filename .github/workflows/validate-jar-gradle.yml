@@ -37,6 +37,8 @@ jobs:
         env:
           MAVEN_USERNAME: ${{ secrets.ARTIFACTORY_AUTH_USER }}
           MAVEN_PASSWORD: ${{ secrets.ARTIFACTORY_AUTH_TOKEN }}
+          ARTIFACTORY_AUTH_USER: ${{ secrets.ARTIFACTORY_AUTH_USER }}
+          ARTIFACTORY_AUTH_TOKEN: ${{ secrets.ARTIFACTORY_AUTH_TOKEN }}
       - name: Upload test artifacts
         uses: actions/upload-artifact@v4
         if: always()
