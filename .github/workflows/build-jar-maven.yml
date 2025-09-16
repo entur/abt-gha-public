@@ -12,6 +12,11 @@ on:
         required: false
         type: string
         default: NO_ID
+      additional-command-line-parameters:
+        description: "Additional command line parameters"
+        type: string
+        required: false
+        default: ""
 
 jobs:
   maven-build:
@@ -41,7 +46,7 @@ jobs:
           MAVEN_USERNAME: ${{ secrets.ARTIFACTORY_AUTH_USER }}
           MAVEN_PASSWORD: ${{ secrets.ARTIFACTORY_AUTH_TOKEN }}
         run: |
-          mvn -B clean package
+          mvn -B clean package ${{inputs.additional-command-line-parameters}}
       - name: Upload artifact for docker deploy to fetch later.
         run: |
           mkdir libs

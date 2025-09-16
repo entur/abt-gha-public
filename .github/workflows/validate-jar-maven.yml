@@ -36,6 +36,11 @@ on:
         required: false
         type: string
         default: NO_ID
+      additional-command-line-parameters:
+        description: "Additional command line parameters"
+        type: string
+        required: false
+        default: ""
 
 jobs:
   validate-maven-build:
@@ -73,8 +78,8 @@ jobs:
           MAVEN_USERNAME: ${{ secrets.ARTIFACTORY_AUTH_USER }}
           MAVEN_PASSWORD: ${{ secrets.ARTIFACTORY_AUTH_TOKEN }}
         run: |
-          mvn -B clean verify -P${{inputs.build-profiles}}
           echo "Validating maven build with profile(s): ${{inputs.build-profiles}}" >> $GITHUB_STEP_SUMMARY
+          mvn -B clean verify -P${{inputs.build-profiles}} ${{inputs.additional-command-line-parameters}}
       - name: Ready for upload
         if: success() && inputs.upload-artifact == 'true'
         run: |

@@ -21,7 +21,11 @@ on:
         required: false
         type: string
         default: NO_ID
-
+      additional-command-line-parameters:
+        description: "Additional command line parameters"
+        type: string
+        required: false
+        default: ""
 jobs:
   maven-release:
     runs-on: ubuntu-24.04
@@ -59,7 +63,7 @@ jobs:
           mvn -B versions:set -DremoveSnapshot
           CURRENT_VERSION=`mvn -B help:evaluate -Dexpression=project.version -q -DforceStdout`
           echo "Releasing in version $CURRENT_VERSION"
-          mvn -B clean deploy -DpublishArtifact=true
+          mvn -B clean deploy -DpublishArtifact=true ${{inputs.additional-command-line-parameters}}
           echo "Released in version $CURRENT_VERSION - ready to tag release" >> $GITHUB_STEP_SUMMARY
           git config user.name "Github Bot"
           git config user.email "github@entur.org"
