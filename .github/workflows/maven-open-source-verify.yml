@@ -47,7 +47,7 @@ jobs:
         if: failure()
         run: |
           readarray -d '' reports < <(find . -wholename "*/target/surefire-reports/*.txt" -print0)
-          if [ ${#errors[@]} -eq 0 ]; then
+          if [ ${#reports[@]} -eq 0 ]; then
             echo "No surefire reports found"
           else
             errorOrFailureReports=()
