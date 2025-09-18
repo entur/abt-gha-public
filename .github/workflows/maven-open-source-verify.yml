@@ -57,15 +57,15 @@ jobs:
               fi
             done
             errorOrFailureReportCount=${#errorOrFailureReports[@]}
-            echo "Found $errorOrFailureReportCount unit test files with failure(s) and/or error(s)." >> $GITHUB_STEP_SUMMARY
             if [ "$errorOrFailureReportCount" -gt "10" ]; then
-              echo "Printing 10 first below." >> $GITHUB_STEP_SUMMARY
+              echo "Printing 10 of $errorOrFailureReportCount unit test files with failure(s) and/or error(s)." >> $GITHUB_STEP_SUMMARY
               for i in {0..count}
               do
                 cat "${errorOrFailureReports[$i]}" >> $GITHUB_STEP_SUMMARY
               done
             else 
-              for report in "${reports[@]}"; do
+              echo "Found $errorOrFailureReportCount unit test files with failure(s) and/or error(s)." >> $GITHUB_STEP_SUMMARY
+              for report in "${errorOrFailureReports[@]}"; do
                 cat "$report" >> $GITHUB_STEP_SUMMARY
               done
             fi
