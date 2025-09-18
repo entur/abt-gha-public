@@ -55,6 +55,12 @@ jobs:
           path: libs
           retention-days: 4
           overwrite: true
+      - name: Upload Surefire Reports
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: surefire-reports-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: "**/target/surefire-reports/"
 
   post-fail-to-slack-if-non-pull-request:
     needs: maven-build

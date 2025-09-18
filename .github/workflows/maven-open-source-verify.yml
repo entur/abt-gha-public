@@ -43,3 +43,36 @@ jobs:
       - name: Verify
         run: |
           mvn ${{ inputs.commands }}
+      - name: Print error reports
+        if: failure()
+        run: |
+          readarray -d '' reports < <(find . -wholename "*/target/surefire-reports/*.txt" -print0)
+          if [ ${#reports[@]} -eq 0 ]; then
+            echo "No surefire reports found"
+          else
+            errorOrFailureReports=()
+            for report in "${reports[@]}"; do
+              if ! grep -q 'Failures: 0, Errors: 0' $report; then
+                errorOrFailureReports+=($report)
+              fi
+            done
+            errorOrFailureReportCount=${#errorOrFailureReports[@]}
+            if [ "$errorOrFailureReportCount" -gt "10" ]; then
+              echo ":rotating_light: Printing first 10 of $errorOrFailureReportCount unit test files with failure(s) and/or error(s)." >> $GITHUB_STEP_SUMMARY
+              for i in {0..10}
+              do
+                cat "${errorOrFailureReports[$i]}" >> $GITHUB_STEP_SUMMARY
+              done
+            else 
+              echo ":rotating_light: Found $errorOrFailureReportCount unit test files with failure(s) and/or error(s)." >> $GITHUB_STEP_SUMMARY
+              for report in "${errorOrFailureReports[@]}"; do
+                cat "$report" >> $GITHUB_STEP_SUMMARY
+              done
+            fi
+          fi
+      - name: Upload Surefire Reports
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: surefire-reports-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: "**/target/surefire-reports/"

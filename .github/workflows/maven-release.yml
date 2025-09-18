@@ -66,6 +66,12 @@ jobs:
           git tag -a ${REL_PREFIX}${CURRENT_VERSION} HEAD -m "Release $CURRENT_VERSION" 
           git push --tags
           echo "Release commit has been tagged"
+      - name: Upload Surefire Reports
+        uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: surefire-reports-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          path: "**/target/surefire-reports/"
 
   post-failure-to-slack:
     needs: maven-release
