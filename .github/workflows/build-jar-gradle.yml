@@ -47,7 +47,7 @@ jobs:
         uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: test-results--${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
+          name: test-results-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: build/test-results/test/*.xml
           overwrite: true
 
