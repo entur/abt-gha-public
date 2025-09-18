@@ -61,7 +61,7 @@ jobs:
               echo ":rotating_light: Printing 10 of $errorOrFailureReportCount unit test files with failure(s) and/or error(s)." >> $GITHUB_STEP_SUMMARY
               for i in {0..count}
               do
-                cat "${errorOrFailureReports[$i]}" >> $GITHUB_STEP_SUMMARY
+                cat "${errorOrFailureReports[i]}" >> $GITHUB_STEP_SUMMARY
               done
             else 
               echo ":rotating_light: Found $errorOrFailureReportCount unit test files with failure(s) and/or error(s)." >> $GITHUB_STEP_SUMMARY
