@@ -80,11 +80,11 @@ jobs:
         run: |
           readarray -d '' reports < <(find . -wholename "*/target/surefire-reports/*.txt" -print0)
           for report in "${reports[@]}"; do
-          #echo "Current item: $report"
-          if ! grep -q 'Failures: 0, Errors: 0' $report; then
-            echo $report
-            cat $report >> $GITHUB_STEP_SUMMARY
-          fi
+            #echo "Current item: $report"
+            if ! grep -q 'Failures: 0, Errors: 0' $report; then
+              echo $report
+              cat $report >> $GITHUB_STEP_SUMMARY
+            fi
           done
       - name: Ready for upload
         if: success() && inputs.upload-artifact == 'true'

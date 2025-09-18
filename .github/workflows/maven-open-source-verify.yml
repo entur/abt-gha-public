@@ -43,3 +43,14 @@ jobs:
       - name: Verify
         run: |
           mvn ${{ inputs.commands }}
+      - name: Print error reports
+        if: failure()
+        run: |
+          readarray -d '' reports < <(find . -wholename "*/target/surefire-reports/*.txt" -print0)
+          for report in "${reports[@]}"; do
+            #echo "Current item: $report"
+            if ! grep -q 'Failures: 0, Errors: 0' $report; then
+              echo $report
+              cat $report >> $GITHUB_STEP_SUMMARY
+            fi
+          done
