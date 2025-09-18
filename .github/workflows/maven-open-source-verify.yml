@@ -47,10 +47,23 @@ jobs:
         if: failure()
         run: |
           readarray -d '' reports < <(find . -wholename "*/target/surefire-reports/*.txt" -print0)
-          for report in "${reports[@]}"; do
-            #echo "Current item: $report"
-            if ! grep -q 'Failures: 0, Errors: 0' $report; then
-              echo $report
-              cat $report >> $GITHUB_STEP_SUMMARY
-            fi
-          done
+          if [ ${#errors[@]} -eq 0 ]; then
+            echo "No surefire reports found"
+          else
+            errorOrFailureReports=()
+            for report in "${reports[@]}"; do
+              if ! grep -q 'Failures: 0, Errors: 0' $report; then
+                errorOrFailureReports+=($report)
+              fi
+            done
+          
+            echo "Found ${#errorOrFailureReports[@]} unit test files with failure(s) and/or error(s)." >> $GITHUB_STEP_SUMMARY
+            maxSummary=10
+            availableSummary=${#errorOrFailureReports[@]}
+            count=$(( maxSummary < availableSummary ? maxSummary : availableSummary ))
+            
+            for i in {0..count}
+            do
+              cat "${errorOrFailureReports[$i]}" >> $GITHUB_STEP_SUMMARY
+            done
+          fi
