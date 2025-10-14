@@ -6,7 +6,7 @@ on:
         description: "Slack channel-id to post notification to"
         required: false
         type: string
-        default: NO_ID
+        default: ${{ vars.channel_id || 'NO_ID'}}
 
 jobs:
   # See if there are dependabot PRs that are open, so we can notify that they need attention.

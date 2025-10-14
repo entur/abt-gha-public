@@ -11,7 +11,7 @@ on:
         description: "Slack channel-id to post notification to"
         required: false
         type: string
-        default: NO_ID
+        default: ${{ vars.channel_id || 'NO_ID'}}
 
 jobs:
   gradle-build:
