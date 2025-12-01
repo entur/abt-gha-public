@@ -125,7 +125,8 @@ jobs:
 
   post-to-slack-if-failure:
     needs: validate-maven-build
-    if: failure() && inputs.channel-id != 'NO_ID'
+    if: failure() && inputs.channel-id != 'NO_ID' && github.event.pull_request.user.login != 'dependabot[bot]'
+
     uses: entur/gha-slack/.github/workflows/post.yml@v2
     with:
       channel_id: ${{ inputs.channel-id }}
