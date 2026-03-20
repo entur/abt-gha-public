@@ -16,6 +16,11 @@ on:
         type: string
         required: false
         default: ubuntu-24.04
+    secrets:
+      ARTIFACTORY_AUTH_USER:
+        required: true
+      ARTIFACTORY_AUTH_TOKEN:
+        required: true
 
 jobs:
   prepare-maven-build:
