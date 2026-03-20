@@ -1,0 +1,46 @@
+name: validate-maven
+on:
+  workflow_call:
+    inputs:
+      java-version:
+        description: Java Runtime Version
+        required: true
+        type: string
+      server-id:
+        description: Server-id used in pom to reference generated settings.xml
+        type: string
+        required: false
+        default: entur-partner
+      build-runner:
+        description: "Label of runner to use for maven build. (https://github.com/entur/abt-gha/settings/actions/runners)"
+        type: string
+        required: false
+        default: ubuntu-24.04
+
+jobs:
+  prepare-maven-build:
+    runs-on: ${{ inputs.build-runner }}
+    steps:
+      - uses: actions/checkout@v4
+      - name: Set up Java ${{ inputs.java-version }}
+        uses: actions/setup-java@v4
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: liberica
+          server-id: ${{ inputs.server-id }}
+          server-username: MAVEN_USERNAME
+          server-password: MAVEN_PASSWORD
+      - name: Cache Maven repository
+        uses: actions/cache@v4
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+      - name: Prepare
+        env:
+          MAVEN_USERNAME: ${{ secrets.ARTIFACTORY_AUTH_USER }}
+          MAVEN_PASSWORD: ${{ secrets.ARTIFACTORY_AUTH_TOKEN }}
+        run: |
+          mvn dependency:resolve dependency:resolve-plugins -P mute-logging
+
