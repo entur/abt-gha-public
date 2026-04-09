@@ -38,7 +38,7 @@ jobs:
           java-version: ${{ inputs.java-version }}
           distribution: ${{ inputs.java-distribution }}
       - name: Restore Maven repository Cache
-        if: ${{ !inputs.saveCache }}
+        id: maven-cache-restore
         uses: actions/cache/restore@v5
         with:
           path: ~/.m2/repository
@@ -49,13 +49,11 @@ jobs:
         run: |
           mvn ${{ inputs.commands }}
       - name: Save Maven repository Cache
-        if: success() && inputs.saveCache
+        if: success() && steps.maven-cache-restore.outputs.cache-hit != 'true' && inputs.saveCache
         uses: actions/cache/save@v5
         with:
           path: ~/.m2/repository
           key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
       - name: Print error reports
         if: failure()
         run: |
