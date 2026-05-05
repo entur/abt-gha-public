@@ -14,7 +14,7 @@ on:
         description: Docker image to deploy (image_name:image_tag)
         required: true
         type: string
-      slack-channel-id:
+      channel-id:
         description: Slack channel ID for deployment notifications
         required: true
         type: string
@@ -45,5 +45,5 @@ jobs:
     with:
       environment: ${{ inputs.environment }}
       image: ${{ inputs.image }}
-      slack-channel-id: ${{ inputs.slack-channel-id }}
+      channel-id: ${{ inputs.channel-id }}
     secrets: inherit
