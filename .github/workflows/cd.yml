@@ -22,7 +22,7 @@ on:
 jobs:
   tf-plan:
     name: Terraform Plan
-    uses: entur/abt-gha-public/.github/workflows/terraform-plan.yml@github-actions-CD
+    uses: ./.github/workflows/terraform-plan.yml
     with:
       environment: ${{ inputs.environment }}
     secrets: inherit
@@ -31,7 +31,7 @@ jobs:
     name: Terraform Apply
     needs: [tf-plan]
     if: always() && !cancelled() && needs.tf-plan.result == 'success'
-    uses: entur/abt-gha-public/.github/workflows/terraform-apply.yml@github-actions-CD
+    uses: ./.github/workflows/terraform-apply.yml
     with:
       environment: ${{ inputs.environment }}
       has_changes: ${{ needs.tf-plan.outputs.has_changes }}
@@ -41,7 +41,7 @@ jobs:
     name: Deploy
     needs: [tf-apply]
     if: always() && !cancelled() && needs.tf-apply.result == 'success'
-    uses: entur/abt-gha-public/.github/workflows/helm-deploy.yml@github-actions-CD
+    uses: ./.github/workflows/helm-deploy.yml
     with:
       environment: ${{ inputs.environment }}
       image: ${{ inputs.image }}
