@@ -30,7 +30,7 @@ jobs:
   tf-apply:
     name: Terraform Apply
     needs: [tf-plan]
-    if: always() && !cancelled() && needs.tf-plan.result == 'success'
+    if: always() && !cancelled() && !contains(needs.*.result, 'failure')
     uses: ./.github/workflows/terraform-apply.yml
     with:
       environment: ${{ inputs.environment }}
@@ -40,7 +40,7 @@ jobs:
   deploy:
     name: Deploy
     needs: [tf-apply]
-    if: always() && !cancelled() && needs.tf-apply.result == 'success'
+    if: always() && !cancelled() && !contains(needs.*.result, 'failure')
     uses: ./.github/workflows/helm-deploy.yml
     with:
       environment: ${{ inputs.environment }}
