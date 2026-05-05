@@ -20,8 +20,9 @@ jobs:
     name: Apply
     uses: entur/gha-terraform/.github/workflows/apply.yml@v2
     concurrency:
-      group: terraform-apply-${{ inputs.environment }}-${{ github.repository }}
+      group: terraform-${{ inputs.environment }}-${{ github.repository }}
       cancel-in-progress: false
     with:
       environment: ${{ inputs.environment }}
       has_changes: ${{ inputs.has_changes }}
+    secrets: inherit

@@ -1,3 +1,6 @@
+# Reusable workflow — builds, scans, and pushes a Docker image.
+# Always builds and pushes (unless dry-run=true). Callers are responsible
+# for only invoking this workflow from appropriate refs (e.g. PRs or main).
 name: Docker Build Publish
 on:
   workflow_call:
@@ -6,12 +9,12 @@ on:
         description: If true, perform all actions apart from publish
         required: false
         type: string
-        default: false
+        default: 'false'
       channel-id:
         description: "Slack channel-id to post notification to"
         required: false
         type: string
-        default: ${{ vars.channel_id || 'NO_ID'}}
+        default: ''
       build_artifact_name:
         description: Name of the artifact
         required: false
@@ -56,7 +59,7 @@ jobs:
 
   post-success-to-slack:
     needs: docker-push
-    if: success() && inputs.channel-id != 'NO_ID'
+    if: success() && inputs.channel-id != ''
     uses: entur/gha-slack/.github/workflows/post.yml@v2
     with:
       channel_id: ${{ inputs.channel-id }}
@@ -73,7 +76,7 @@ jobs:
 
   post-failure-to-slack:
     needs: docker-push
-    if: failure() && inputs.channel-id != 'NO_ID'
+    if: failure() && inputs.channel-id != ''
     uses: entur/gha-slack/.github/workflows/post.yml@v2
     with:
       channel_id: ${{ inputs.channel-id }}
