@@ -39,7 +39,7 @@ jobs:
       cancel-in-progress: false
     with:
       environment: dev
-      channel-id: ${{ inputs.channel-id }}
+      slack_channel_id: ${{ inputs.channel-id }}
       image: ${{ inputs.image }}
     secrets: inherit
 
@@ -55,7 +55,7 @@ jobs:
       cancel-in-progress: false
     with:
       environment: tst
-      channel-id: ${{ inputs.channel-id }}
+      slack_channel_id: ${{ inputs.channel-id }}
       image: ${{ inputs.image }}
     secrets: inherit
 
@@ -71,6 +71,6 @@ jobs:
       cancel-in-progress: false
     with:
       environment: prd
-      channel-id: ${{ inputs.channel-id }}
+      slack_channel_id: ${{ inputs.channel-id }}
       image: ${{ inputs.image }}
     secrets: inherit
