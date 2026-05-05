@@ -17,10 +17,9 @@ on:
         required: true
         type: string
       environment:
-        description: Environment to deploy to (dev/tst/prd). Empty means deploy all.
-        required: false
+        description: Environment to deploy to (dev/tst/prd).
+        required: true
         type: string
-        default: ''
       image:
         description: Docker image tag to deploy (image_name:image_tag)
         required: true
@@ -33,7 +32,7 @@ concurrency:
 jobs:
   deploy-dev:
     name: Deploy Dev
-    if: inputs.environment == '' || inputs.environment == 'dev'
+    if: inputs.environment == 'dev'
     uses: entur/gha-helm/.github/workflows/deploy.yml@v1
     concurrency:
       group: cd-deploy-dev-${{ github.repository }}
@@ -49,7 +48,7 @@ jobs:
     needs: [deploy-dev]
     if: >-
       always() && !cancelled() && !contains(needs.*.result, 'failure')
-      && (inputs.environment == '' || inputs.environment == 'tst')
+      && inputs.environment == 'tst'
     uses: entur/gha-helm/.github/workflows/deploy.yml@v1
     concurrency:
       group: cd-deploy-tst-${{ github.repository }}
@@ -65,7 +64,7 @@ jobs:
     needs: [deploy-tst]
     if: >-
       always() && !cancelled() && !contains(needs.*.result, 'failure')
-      && (inputs.environment == '' || inputs.environment == 'prd')
+      && inputs.environment == 'prd'
     uses: entur/gha-helm/.github/workflows/deploy.yml@v1
     concurrency:
       group: cd-deploy-prd-${{ github.repository }}
