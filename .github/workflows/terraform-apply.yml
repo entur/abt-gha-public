@@ -1,0 +1,27 @@
+# Reusable Terraform Apply workflow — applies a plan for a single environment.
+# Concurrency is handled here so callers don't need to repeat it.
+
+name: Terraform Apply
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: Environment to apply (dev/tst/prd)
+        required: true
+        type: string
+      has_changes:
+        description: Whether the plan has changes to apply (from terraform-plan output)
+        required: true
+        type: string
+
+jobs:
+  tf-apply:
+    name: Apply
+    uses: entur/gha-terraform/.github/workflows/apply.yml@v2
+    concurrency:
+      group: terraform-apply-${{ inputs.environment }}-${{ github.repository }}
+      cancel-in-progress: false
+    with:
+      environment: ${{ inputs.environment }}
+      has_changes: ${{ inputs.has_changes }}
