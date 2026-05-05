@@ -12,6 +12,13 @@ on:
         required: false
         type: string
         default: ${{ vars.channel_id || 'NO_ID'}}
+    outputs:
+      image_name:
+        description: "Name of the Docker image pushed to the registry "
+        value: ${{ jobs.docker-push.outputs.image_name }}
+      image_tag:
+        description: "Tag of the Docker image pushed to the registry"
+        value: ${{ jobs.docker-push.outputs.image_tag }}
 
 jobs:
   docker-build:
