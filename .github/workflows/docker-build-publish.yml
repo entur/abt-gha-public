@@ -12,6 +12,11 @@ on:
         required: false
         type: string
         default: ${{ vars.channel_id || 'NO_ID'}}
+      build_artifact_name:
+        description: Name of the artifact
+        required: false
+        type: string
+        default: app
       build_artifact_path:
         description: Path to the build artifact directory
         required: false
@@ -34,7 +39,7 @@ jobs:
   docker-build:
     uses: entur/gha-docker/.github/workflows/build.yml@v1
     with:
-      build_artifact_name: app
+      build_artifact_name: ${{ inputs.build_artifact_name }}
       build_artifact_path: ${{ inputs.build_artifact_path }}
       build_args: ${{ inputs.build_args }}
 
