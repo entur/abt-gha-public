@@ -1,0 +1,77 @@
+# Reusable CD workflow — deploys a pre-built Docker image to dev, tst, and/or prd
+# via gha-helm. Callers handle building and pass the image reference as an input.
+#
+# Concurrency:
+#   - Workflow-level: cancel-in-progress: false ensures a running deploy is never
+#     interrupted. GitHub automatically drops older queued runs, keeping only the
+#     latest — so you get at most 1 active + 1 queued run per branch.
+#   - Deploy jobs use cancel-in-progress: false (never cancel an in-progress deploy)
+
+name: Deploy
+
+on:
+  workflow_call:
+    inputs:
+      slack_channel_id:
+        description: Slack channel ID for deployment notifications
+        required: true
+        type: string
+      environment:
+        description: Environment to deploy to (dev/tst/prd). Empty means deploy all.
+        required: false
+        type: string
+        default: ''
+      image:
+        description: Docker image tag to deploy (image_name:image_tag)
+        required: true
+        type: string
+
+concurrency:
+  group: cd-${{ github.repository }}-${{ github.ref }}
+  cancel-in-progress: false
+
+jobs:
+  deploy-dev:
+    name: Deploy Dev
+    if: inputs.environment == '' || inputs.environment == 'dev'
+    uses: entur/gha-helm/.github/workflows/deploy.yml@v1
+    concurrency:
+      group: cd-deploy-dev-${{ github.repository }}
+      cancel-in-progress: false
+    with:
+      environment: dev
+      slack_channel_id: ${{ inputs.slack_channel_id }}
+      image: ${{ inputs.image }}
+    secrets: inherit
+
+  deploy-tst:
+    name: Deploy Tst
+    needs: [deploy-dev]
+    if: >-
+      always() && !cancelled() && !contains(needs.*.result, 'failure')
+      && (inputs.environment == '' || inputs.environment == 'tst')
+    uses: entur/gha-helm/.github/workflows/deploy.yml@v1
+    concurrency:
+      group: cd-deploy-tst-${{ github.repository }}
+      cancel-in-progress: false
+    with:
+      environment: tst
+      slack_channel_id: ${{ inputs.slack_channel_id }}
+      image: ${{ inputs.image }}
+    secrets: inherit
+
+  deploy-prd:
+    name: Deploy Prd
+    needs: [deploy-tst]
+    if: >-
+      always() && !cancelled() && !contains(needs.*.result, 'failure')
+      && (inputs.environment == '' || inputs.environment == 'prd')
+    uses: entur/gha-helm/.github/workflows/deploy.yml@v1
+    concurrency:
+      group: cd-deploy-prd-${{ github.repository }}
+      cancel-in-progress: false
+    with:
+      environment: prd
+      slack_channel_id: ${{ inputs.slack_channel_id }}
+      image: ${{ inputs.image }}
+    secrets: inherit
