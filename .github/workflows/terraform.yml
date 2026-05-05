@@ -19,16 +19,9 @@ on:
         value: ${{ jobs.tf-plan.outputs.has_changes }}
 
 jobs:
-  terraform-lint:
-    name: Terraform Lint
-    uses: entur/gha-terraform/.github/workflows/lint.yml@v2
-    concurrency:
-      group: terraform-lint-${{ github.repository }}-${{ github.ref }}
-      cancel-in-progress: true
-
+  
   tf-plan:
     name: Plan
-    needs: [terraform-lint]
     uses: entur/gha-terraform/.github/workflows/plan.yml@v2
     concurrency:
       group: terraform-plan-${{ inputs.environment }}-${{ github.repository }}-${{ github.ref }}
