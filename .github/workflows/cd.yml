@@ -1,0 +1,49 @@
+# Reusable CD workflow — runs terraform plan, apply, and helm deploy in sequence
+# for a single environment. Callers place approval gates between environments.
+
+name: CD
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: Environment to deploy to (dev/tst/prd)
+        required: true
+        type: string
+      image:
+        description: Docker image to deploy (image_name:image_tag)
+        required: true
+        type: string
+      slack_channel_id:
+        description: Slack channel ID for deployment notifications
+        required: true
+        type: string
+
+jobs:
+  tf-plan:
+    name: Terraform Plan
+    uses: entur/abt-gha-public/.github/workflows/terraform-plan.yml@github-actions-CD
+    with:
+      environment: ${{ inputs.environment }}
+    secrets: inherit
+
+  tf-apply:
+    name: Terraform Apply
+    needs: [tf-plan]
+    if: always() && !cancelled() && needs.tf-plan.result == 'success'
+    uses: entur/abt-gha-public/.github/workflows/terraform-apply.yml@github-actions-CD
+    with:
+      environment: ${{ inputs.environment }}
+      has_changes: ${{ needs.tf-plan.outputs.has_changes }}
+    secrets: inherit
+
+  deploy:
+    name: Deploy
+    needs: [tf-apply]
+    if: always() && !cancelled() && needs.tf-apply.result == 'success'
+    uses: entur/abt-gha-public/.github/workflows/helm-deploy.yml@github-actions-CD
+    with:
+      environment: ${{ inputs.environment }}
+      image: ${{ inputs.image }}
+      slack_channel_id: ${{ inputs.slack_channel_id }}
+    secrets: inherit
