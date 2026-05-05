@@ -1,4 +1,4 @@
-# Reusable CD workflow — deploys a pre-built Docker image to dev, tst, and/or prd
+# Reusable helm deploy workflow — deploys a pre-built Docker image to dev, tst, and/or prd
 # via gha-helm. Callers handle building and pass the image reference as an input.
 #
 # Concurrency:
