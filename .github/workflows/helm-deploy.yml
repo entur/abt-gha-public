@@ -12,7 +12,7 @@ name: Deploy
 on:
   workflow_call:
     inputs:
-      slack_channel_id:
+      slack-channel-id:
         description: Slack channel ID for deployment notifications
         required: true
         type: string
@@ -39,7 +39,7 @@ jobs:
       cancel-in-progress: false
     with:
       environment: dev
-      slack_channel_id: ${{ inputs.slack_channel_id }}
+      slack-channel-id: ${{ inputs.slack-channel-id }}
       image: ${{ inputs.image }}
     secrets: inherit
 
@@ -55,7 +55,7 @@ jobs:
       cancel-in-progress: false
     with:
       environment: tst
-      slack_channel_id: ${{ inputs.slack_channel_id }}
+      slack-channel-id: ${{ inputs.slack-channel-id }}
       image: ${{ inputs.image }}
     secrets: inherit
 
@@ -71,6 +71,6 @@ jobs:
       cancel-in-progress: false
     with:
       environment: prd
-      slack_channel_id: ${{ inputs.slack_channel_id }}
+      slack-channel-id: ${{ inputs.slack-channel-id }}
       image: ${{ inputs.image }}
     secrets: inherit
