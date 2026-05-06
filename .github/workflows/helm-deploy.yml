@@ -27,51 +27,15 @@ on:
         type: string
 
 concurrency:
-  group: cd-${{ github.repository }}-${{ github.ref }}
+  group: cd-deploy-${{ inputs.environment }}-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:
-  deploy-dev:
-    name: Deploy Dev
-    if: inputs.environment == 'dev'
+  deploy:
+    name: Deploy to ${{ inputs.environment }}
     uses: entur/gha-helm/.github/workflows/deploy.yml@v1
-    concurrency:
-      group: cd-deploy-dev-${{ github.repository }}
-      cancel-in-progress: false
     with:
-      environment: dev
-      slack_channel_id: ${{ inputs.channel-id }}
-      image: ${{ inputs.image }}
-    secrets: inherit
-
-  deploy-tst:
-    name: Deploy Tst
-    needs: [deploy-dev]
-    if: >-
-      always() && !cancelled() && !contains(needs.*.result, 'failure')
-      && inputs.environment == 'tst'
-    uses: entur/gha-helm/.github/workflows/deploy.yml@v1
-    concurrency:
-      group: cd-deploy-tst-${{ github.repository }}
-      cancel-in-progress: false
-    with:
-      environment: tst
-      slack_channel_id: ${{ inputs.channel-id }}
-      image: ${{ inputs.image }}
-    secrets: inherit
-
-  deploy-prd:
-    name: Deploy Prd
-    needs: [deploy-tst]
-    if: >-
-      always() && !cancelled() && !contains(needs.*.result, 'failure')
-      && inputs.environment == 'prd'
-    uses: entur/gha-helm/.github/workflows/deploy.yml@v1
-    concurrency:
-      group: cd-deploy-prd-${{ github.repository }}
-      cancel-in-progress: false
-    with:
-      environment: prd
+      environment: ${{ inputs.environment }}
       slack_channel_id: ${{ inputs.channel-id }}
       image: ${{ inputs.image }}
     secrets: inherit

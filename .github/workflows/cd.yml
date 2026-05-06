@@ -30,7 +30,6 @@ jobs:
   tf-apply:
     name: Terraform Apply
     needs: [tf-plan]
-    if: always() && !cancelled() && !contains(needs.*.result, 'failure')
     uses: ./.github/workflows/terraform-apply.yml
     with:
       environment: ${{ inputs.environment }}
