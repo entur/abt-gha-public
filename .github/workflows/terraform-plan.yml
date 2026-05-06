@@ -25,7 +25,7 @@ jobs:
     uses: entur/gha-terraform/.github/workflows/plan.yml@v2
     secrets: inherit
     concurrency:
-      group: terraform-${{ inputs.environment }}-${{ github.repository }}
+      group: terraform-plan-${{ inputs.environment }}-${{ github.repository }}
       cancel-in-progress: true
     with:
       environment: ${{ inputs.environment }}
