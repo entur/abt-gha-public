@@ -1,0 +1,31 @@
+# Reusable Terraform Plan workflow — runs lint and plan for a single environment.
+# Callers are responsible for the apply step so they can place approval gates
+# between plan and apply without requiring a second approval for deploy.
+#
+# Outputs has_changes so callers can pass it to gha-terraform apply.yml.
+
+name: Terraform Plan
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: Environment to plan (dev/tst/prd)
+        required: true
+        type: string
+    outputs:
+      has_changes:
+        description: Whether the plan has infrastructure changes to apply
+        value: ${{ jobs.tf-plan.outputs.has_changes }}
+
+jobs:
+  
+  tf-plan:
+    name: Plan
+    uses: entur/gha-terraform/.github/workflows/plan.yml@v2
+    secrets: inherit
+    concurrency:
+      group: terraform-plan-${{ inputs.environment }}-${{ github.repository }}
+      cancel-in-progress: true
+    with:
+      environment: ${{ inputs.environment }}

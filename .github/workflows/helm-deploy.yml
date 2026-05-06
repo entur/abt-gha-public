@@ -1,0 +1,31 @@
+name: Deploy
+
+on:
+  workflow_call:
+    inputs:
+      channel-id:
+        description: Slack channel ID for deployment notifications
+        required: true
+        type: string
+      environment:
+        description: Environment to deploy to (dev/tst/prd).
+        required: true
+        type: string
+      image:
+        description: Docker image tag to deploy (image_name:image_tag)
+        required: true
+        type: string
+
+concurrency:
+  group: cd-deploy-${{ inputs.environment }}-${{ github.repository }}
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: Deploy to ${{ inputs.environment }}
+    uses: entur/gha-helm/.github/workflows/deploy.yml@v1
+    with:
+      environment: ${{ inputs.environment }}
+      slack_channel_id: ${{ inputs.channel-id }}
+      image: ${{ inputs.image }}
+    secrets: inherit

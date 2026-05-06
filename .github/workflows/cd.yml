@@ -1,0 +1,46 @@
+name: CD
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: Environment to deploy to (dev/tst/prd)
+        required: true
+        type: string
+      image:
+        description: Docker image to deploy (image_name:image_tag)
+        required: true
+        type: string
+      channel-id:
+        description: Slack channel ID for deployment notifications
+        required: true
+        type: string
+
+jobs:
+  tf-plan:
+    name: Terraform Plan
+    uses: ./.github/workflows/terraform-plan.yml
+    with:
+      environment: ${{ inputs.environment }}
+    secrets: inherit
+
+  tf-apply:
+    name: Terraform Apply
+    needs: [tf-plan]
+    uses: ./.github/workflows/terraform-apply.yml
+    with:
+      environment: ${{ inputs.environment }}
+      has_changes: ${{ needs.tf-plan.outputs.has_changes }}
+    secrets: inherit
+
+  deploy:
+    name: Deploy
+    needs: [tf-apply]
+    # Terraform apply is skipped on empty plan. This if ensures that job is run even if previous step is skipped
+    if: always() && !cancelled() && !contains(needs.*.result, 'failure')
+    uses: ./.github/workflows/helm-deploy.yml
+    with:
+      environment: ${{ inputs.environment }}
+      image: ${{ inputs.image }}
+      channel-id: ${{ inputs.channel-id }}
+    secrets: inherit

@@ -1,3 +1,6 @@
+# Reusable workflow — builds, scans, and pushes a Docker image.
+# Always builds and pushes (unless dry-run=true). Callers are responsible
+# for only invoking this workflow from appropriate refs (e.g. PRs or main).
 name: Docker Build Publish
 on:
   workflow_call:
@@ -6,12 +9,27 @@ on:
         description: If true, perform all actions apart from publish
         required: false
         type: string
-        default: false
+        default: 'false'
       channel-id:
         description: "Slack channel-id to post notification to"
         required: false
         type: string
-        default: ${{ vars.channel_id || 'NO_ID'}}
+        default: ''
+      build_artifact_name:
+        description: Name of the artifact
+        required: false
+        type: string
+        default: app
+      build_artifact_path:
+        description: Path to the build artifact directory
+        required: false
+        type: string
+        default: build/libs/
+      build_args:
+        description: Docker build arguments (newline-separated KEY=VALUE pairs)
+        required: false
+        type: string
+        default: ''
     outputs:
       image_name:
         description: "Name of the Docker image pushed to the registry "
@@ -22,11 +40,11 @@ on:
 
 jobs:
   docker-build:
-    if: github.ref == 'refs/heads/main' || inputs.dry-run == 'true'
     uses: entur/gha-docker/.github/workflows/build.yml@v1
     with:
-      build_artifact_name: app
-      build_artifact_path: build/libs/
+      build_artifact_name: ${{ inputs.build_artifact_name }}
+      build_artifact_path: ${{ inputs.build_artifact_path }}
+      build_args: ${{ inputs.build_args }}
 
   docker-scan:
     needs: docker-build
@@ -41,7 +59,7 @@ jobs:
 
   post-success-to-slack:
     needs: docker-push
-    if: success() && inputs.channel-id != 'NO_ID'
+    if: success() && inputs.channel-id != ''
     uses: entur/gha-slack/.github/workflows/post.yml@v2
     with:
       channel_id: ${{ inputs.channel-id }}
@@ -58,7 +76,7 @@ jobs:
 
   post-failure-to-slack:
     needs: docker-push
-    if: failure() && inputs.channel-id != 'NO_ID'
+    if: failure() && inputs.channel-id != ''
     uses: entur/gha-slack/.github/workflows/post.yml@v2
     with:
       channel_id: ${{ inputs.channel-id }}
