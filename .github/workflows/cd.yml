@@ -1,6 +1,3 @@
-# Reusable CD workflow — runs terraform plan, apply, and helm deploy in sequence
-# for a single environment. Callers place approval gates between environments.
-
 name: CD
 
 on:
