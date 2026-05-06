@@ -36,6 +36,7 @@ jobs:
   deploy:
     name: Deploy
     needs: [tf-apply]
+    # Terraform apply is skipped on empty plan. This if ensures that job is run even if previous step is skipped
     if: always() && !cancelled() && !contains(needs.*.result, 'failure')
     uses: ./.github/workflows/helm-deploy.yml
     with:
