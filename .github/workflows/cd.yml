@@ -24,9 +24,6 @@ jobs:
   tf-plan:
     name: Terraform Plan
     uses: entur/gha-terraform/.github/workflows/plan.yml@v2
-    concurrency:
-      group: terraform-plan-${{ inputs.environment }}-${{ github.repository }}
-      cancel-in-progress: true
     with:
       environment: ${{ inputs.environment }}
     secrets: inherit
@@ -35,9 +32,6 @@ jobs:
     name: Terraform Apply
     needs: [tf-plan]
     uses: entur/gha-terraform/.github/workflows/apply.yml@v2
-    concurrency:
-      group: terraform-apply-${{ inputs.environment }}-${{ github.repository }}
-      cancel-in-progress: false
     with:
       environment: ${{ inputs.environment }}
       has_changes: ${{ needs.tf-plan.outputs.has_changes }}
@@ -49,9 +43,6 @@ jobs:
     # Terraform apply is skipped on empty plan. This if ensures that job is run even if previous step is skipped
     if: always() && !cancelled() && !contains(needs.*.result, 'failure')
     uses: entur/gha-helm/.github/workflows/deploy.yml@v1
-    concurrency:
-      group: helm-deploy-${{ inputs.environment }}-${{ github.repository }}
-      cancel-in-progress: false
     with:
       environment: ${{ inputs.environment }}
       image: ${{ inputs.image }}
