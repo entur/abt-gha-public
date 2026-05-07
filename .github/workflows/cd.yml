@@ -16,6 +16,10 @@ on:
         required: true
         type: string
 
+concurrency:
+  group: cd-${{ inputs.environment }}-${{ github.repository }}
+  cancel-in-progress: false
+
 jobs:
   tf-plan:
     name: Terraform Plan
