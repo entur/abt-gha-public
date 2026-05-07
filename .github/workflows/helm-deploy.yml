@@ -17,7 +17,7 @@ on:
         type: string
 
 concurrency:
-  group: cd-deploy-${{ inputs.environment }}-${{ github.repository }}
+  group: helm-deploy-${{ inputs.environment }}-${{ github.repository }}
   cancel-in-progress: false
 
 jobs:

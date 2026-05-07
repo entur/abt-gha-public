@@ -19,7 +19,10 @@ on:
 jobs:
   tf-plan:
     name: Terraform Plan
-    uses: ./.github/workflows/terraform-plan.yml
+    uses: entur/gha-terraform/.github/workflows/plan.yml@v2
+    concurrency:
+      group: terraform-plan-${{ inputs.environment }}-${{ github.repository }}
+      cancel-in-progress: true
     with:
       environment: ${{ inputs.environment }}
     secrets: inherit
@@ -27,7 +30,10 @@ jobs:
   tf-apply:
     name: Terraform Apply
     needs: [tf-plan]
-    uses: ./.github/workflows/terraform-apply.yml
+    uses: entur/gha-terraform/.github/workflows/apply.yml@v2
+    concurrency:
+      group: terraform-apply-${{ inputs.environment }}-${{ github.repository }}
+      cancel-in-progress: false
     with:
       environment: ${{ inputs.environment }}
       has_changes: ${{ needs.tf-plan.outputs.has_changes }}
@@ -38,9 +44,12 @@ jobs:
     needs: [tf-apply]
     # Terraform apply is skipped on empty plan. This if ensures that job is run even if previous step is skipped
     if: always() && !cancelled() && !contains(needs.*.result, 'failure')
-    uses: ./.github/workflows/helm-deploy.yml
+    uses: entur/gha-helm/.github/workflows/deploy.yml@v1
+    concurrency:
+      group: helm-deploy-${{ inputs.environment }}-${{ github.repository }}
+      cancel-in-progress: false
     with:
       environment: ${{ inputs.environment }}
       image: ${{ inputs.image }}
-      channel-id: ${{ inputs.channel-id }}
+      slack_channel_id: ${{ inputs.channel-id }}
     secrets: inherit
