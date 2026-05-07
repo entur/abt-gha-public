@@ -37,6 +37,9 @@ on:
       image_tag:
         description: "Tag of the Docker image pushed to the registry"
         value: ${{ jobs.docker-push.outputs.image_tag }}
+      image_and_tag:
+        description: "Full image name with tag"
+        value: ${{ jobs.docker-push.outputs.image_and_tag }}
 
 jobs:
   docker-build:
