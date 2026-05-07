@@ -199,6 +199,15 @@ Gradle:
      secrets: inherit
  ```
 
+## Updating the v1 floating tag
+The `v1` tag is a floating tag that points to the latest `v1.x` release. To update it to point to the current commit:
+
+```bash
+git push origin :refs/tags/v1
+git tag -fa v1
+git push origin --tags
+```
+
 ## Release on main
 Uses secrets.
 
