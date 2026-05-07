@@ -15,6 +15,10 @@ on:
         description: Slack channel ID for deployment notifications
         required: true
         type: string
+      image-set-path:
+        description: Comma-separated Helm values path(s) for the container image. See gha-helm deploy.yml for details.
+        required: false
+        type: string
 
 concurrency:
   group: cd-${{ inputs.environment }}-${{ github.repository }}
@@ -47,4 +51,5 @@ jobs:
       environment: ${{ inputs.environment }}
       image: ${{ inputs.image }}
       slack_channel_id: ${{ inputs.channel-id }}
+      image_set_path: ${{ inputs.image-set-path }}
     secrets: inherit

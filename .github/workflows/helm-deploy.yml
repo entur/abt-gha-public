@@ -15,6 +15,10 @@ on:
         description: Docker image tag to deploy (image_name:image_tag)
         required: true
         type: string
+      image-set-path:
+        description: Comma-separated Helm values path(s) for the container image. See gha-helm deploy.yml for details.
+        required: false
+        type: string
 
 concurrency:
   group: helm-deploy-${{ inputs.environment }}-${{ github.repository }}
@@ -28,4 +32,5 @@ jobs:
       environment: ${{ inputs.environment }}
       slack_channel_id: ${{ inputs.channel-id }}
       image: ${{ inputs.image }}
+      image_set_path: ${{ inputs.image-set-path }}
     secrets: inherit
