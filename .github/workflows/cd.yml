@@ -15,8 +15,8 @@ on:
         description: Slack channel ID for deployment notifications
         required: true
         type: string
-      image-set-path:
-        description: Comma-separated Helm values path(s) for the container image. See gha-helm deploy.yml for details.
+      container-name:
+        description: "Replace the image of a named container in the common.containers array. Resolves the array index automatically using the container name in values.yaml"
         required: false
         type: string
         default: "common.container.image"
@@ -103,10 +103,10 @@ jobs:
     concurrency:
       group: cd-deploy-${{ inputs.environment }}-${{ github.repository }}
       cancel-in-progress: false
-    uses: entur/gha-helm/.github/workflows/deploy.yml@v1
+    uses: entur/gha-helm/.github/workflows/deploy.yml@container_array_replace_image
     with:
       environment: ${{ inputs.environment }}
       image: ${{ inputs.image }}
       slack_channel_id: ${{ inputs.channel-id }}
-      image_set_path: ${{ inputs.image-set-path }}
+      container_name: ${{ inputs.container-name }}
     secrets: inherit
