@@ -19,7 +19,7 @@ on:
         description: "Replace the image of a named container in the common.containers array. Resolves the array index automatically using the container name in values.yaml"
         required: false
         type: string
-        default: "common.container.image"
+        default: ""
       notify-changelog:
         description: Whether to post a changelog Slack notification on deployment
         required: false
@@ -103,7 +103,7 @@ jobs:
     concurrency:
       group: cd-deploy-${{ inputs.environment }}-${{ github.repository }}
       cancel-in-progress: false
-    uses: entur/gha-helm/.github/workflows/deploy.yml@container_array_replace_image
+    uses: entur/gha-helm/.github/workflows/deploy.yml@v1
     with:
       environment: ${{ inputs.environment }}
       image: ${{ inputs.image }}
