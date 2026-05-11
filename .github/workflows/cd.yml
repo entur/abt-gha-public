@@ -19,6 +19,7 @@ on:
         description: Comma-separated Helm values path(s) for the container image. See gha-helm deploy.yml for details.
         required: false
         type: string
+        default: "common.container.image"
 
 concurrency:
   group: cd-${{ inputs.environment }}-${{ github.repository }}
