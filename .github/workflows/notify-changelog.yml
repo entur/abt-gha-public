@@ -1,34 +1,16 @@
-name: CD
+name: Notify Changelog
 
 on:
   workflow_call:
     inputs:
       environment:
-        description: Environment to deploy to (dev/tst/prd)
-        required: true
-        type: string
-      image:
-        description: Docker image to deploy (image_name:image_tag)
+        description: Environment to check last successful deployment for (dev/tst/prd)
         required: true
         type: string
       channel-id:
-        description: Slack channel ID for deployment notifications
+        description: Slack channel ID to post the changelog notification to
         required: true
         type: string
-      image-set-path:
-        description: Comma-separated Helm values path(s) for the container image. See gha-helm deploy.yml for details.
-        required: false
-        type: string
-        default: "common.container.image"
-      notify-changelog:
-        description: Whether to post a changelog Slack notification on deployment
-        required: false
-        type: boolean
-        default: true
-
-concurrency:
-  group: cd-${{ inputs.environment }}-${{ github.repository }}
-  cancel-in-progress: false
 
 jobs:
   git-diff-url:
@@ -73,38 +55,9 @@ jobs:
   notify-diff:
     name: Notify Git Diff
     needs: git-diff-url
-    if: inputs.notify-changelog && needs.git-diff-url.outputs.compare_url != ''
+    if: needs.git-diff-url.outputs.compare_url != ''
     uses: entur/gha-slack/.github/workflows/post.yml@v2
     with:
       channel_id: ${{ inputs.channel-id }}
       message: "New <${{ needs.git-diff-url.outputs.compare_url }}|changelog> for ${{ github.event.repository.name }} ${{ needs.git-diff-url.outputs.short_sha }} in ${{ inputs.environment }}"
-    secrets: inherit
-
-  tf-plan:
-    name: Terraform Plan
-    uses: entur/gha-terraform/.github/workflows/plan.yml@v2
-    with:
-      environment: ${{ inputs.environment }}
-    secrets: inherit
-
-  tf-apply:
-    name: Terraform Apply
-    needs: [tf-plan]
-    uses: entur/gha-terraform/.github/workflows/apply.yml@v2
-    with:
-      environment: ${{ inputs.environment }}
-      has_changes: ${{ needs.tf-plan.outputs.has_changes }}
-    secrets: inherit
-
-  deploy:
-    name: Deploy
-    needs: [tf-apply]
-    # Terraform apply is skipped on empty plan. This if ensures that job is run even if previous step is skipped
-    if: always() && !cancelled() && !contains(needs.*.result, 'failure')
-    uses: entur/gha-helm/.github/workflows/deploy.yml@v1
-    with:
-      environment: ${{ inputs.environment }}
-      image: ${{ inputs.image }}
-      slack_channel_id: ${{ inputs.channel-id }}
-      image_set_path: ${{ inputs.image-set-path }}
     secrets: inherit
