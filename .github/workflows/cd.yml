@@ -26,6 +26,37 @@ concurrency:
   cancel-in-progress: false
 
 jobs:
+  git-diff-url:
+    name: Git Diff URL
+    runs-on: ubuntu-latest
+    permissions:
+      deployments: read
+    steps:
+      - name: Print compare URL since last successful deployment
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DEPLOYED_SHA=$(
+            gh api "repos/${{ github.repository }}/deployments" \
+              -X GET \
+              -f environment="${{ inputs.environment }}" \
+              -f per_page=20 \
+              --jq '.[] | "\(.sha) \(.statuses_url)"' | \
+            while IFS=' ' read -r sha statuses_url; do
+              state=$(gh api "$statuses_url" --jq '.[0].state // empty' 2>/dev/null)
+              if [ "$state" = "success" ]; then
+                echo "$sha"
+                break
+              fi
+            done
+          )
+
+          if [ -z "$DEPLOYED_SHA" ]; then
+            echo "No previous successful deployment found for ${{ inputs.environment }}"
+          else
+            echo "https://github.com/${{ github.repository }}/compare/${DEPLOYED_SHA}...${{ github.sha }}"
+          fi
+
   tf-plan:
     name: Terraform Plan
     uses: entur/gha-terraform/.github/workflows/plan.yml@v2
