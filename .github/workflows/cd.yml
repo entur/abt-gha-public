@@ -20,6 +20,11 @@ on:
         required: false
         type: string
         default: "common.container.image"
+      notify-changelog:
+        description: Whether to post a changelog Slack notification on deployment
+        required: false
+        type: boolean
+        default: true
 
 concurrency:
   group: cd-${{ inputs.environment }}-${{ github.repository }}
@@ -68,7 +73,7 @@ jobs:
   notify-diff:
     name: Notify Git Diff
     needs: git-diff-url
-    if: needs.git-diff-url.outputs.compare_url != ''
+    if: inputs.notify-changelog && needs.git-diff-url.outputs.compare_url != ''
     uses: entur/gha-slack/.github/workflows/post.yml@v2
     with:
       channel_id: ${{ inputs.channel-id }}
