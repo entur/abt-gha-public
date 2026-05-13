@@ -1,0 +1,63 @@
+name: Notify Changelog
+
+on:
+  workflow_call:
+    inputs:
+      environment:
+        description: Environment to check last successful deployment for (dev/tst/prd)
+        required: true
+        type: string
+      channel-id:
+        description: Slack channel ID to post the changelog notification to
+        required: true
+        type: string
+
+jobs:
+  git-diff-url:
+    name: Git Diff URL
+    runs-on: ubuntu-latest
+    permissions:
+      deployments: read
+    outputs:
+      compare_url: ${{ steps.compare.outputs.compare_url }}
+      short_sha: ${{ steps.compare.outputs.short_sha }}
+    steps:
+      - name: Get compare URL since last successful deployment
+        id: compare
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          DEPLOYED_SHA=$(
+            gh api "repos/${{ github.repository }}/deployments" \
+              -X GET \
+              -f environment="${{ inputs.environment }}" \
+              -f per_page=20 \
+              --jq '.[] | "\(.sha) \(.statuses_url)"' | \
+            while IFS=' ' read -r sha statuses_url; do
+              state=$(gh api "$statuses_url" --jq '.[0].state // empty' 2>/dev/null)
+              if [ "$state" = "success" ]; then
+                echo "$sha"
+                break
+              fi
+            done
+          )
+
+          echo "short_sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+          if [ -n "$DEPLOYED_SHA" ]; then
+            URL="https://github.com/${{ github.repository }}/compare/${DEPLOYED_SHA}...${{ github.sha }}"
+            echo "compare_url=$URL" >> $GITHUB_OUTPUT
+            echo "$URL"
+          else
+            echo "No previous successful deployment found for ${{ inputs.environment }}"
+          fi
+
+  notify-diff:
+    name: Notify Git Diff
+    needs: git-diff-url
+    if: needs.git-diff-url.outputs.compare_url != ''
+    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: "New changelog for ${{ github.event.repository.name }} ${{ needs.git-diff-url.outputs.short_sha }} in ${{ inputs.environment }}\n${{ needs.git-diff-url.outputs.compare_url }}"
+    secrets: inherit
