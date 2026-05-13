@@ -31,8 +31,12 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       deployments: read
+    outputs:
+      compare_url: ${{ steps.compare.outputs.compare_url }}
+      short_sha: ${{ steps.compare.outputs.short_sha }}
     steps:
-      - name: Print compare URL since last successful deployment
+      - name: Get compare URL since last successful deployment
+        id: compare
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         run: |
@@ -51,11 +55,25 @@ jobs:
             done
           )
 
-          if [ -z "$DEPLOYED_SHA" ]; then
-            echo "No previous successful deployment found for ${{ inputs.environment }}"
+          echo "short_sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
+
+          if [ -n "$DEPLOYED_SHA" ]; then
+            URL="https://github.com/${{ github.repository }}/compare/${DEPLOYED_SHA}...${{ github.sha }}"
+            echo "compare_url=$URL" >> $GITHUB_OUTPUT
+            echo "$URL"
           else
-            echo "https://github.com/${{ github.repository }}/compare/${DEPLOYED_SHA}...${{ github.sha }}"
+            echo "No previous successful deployment found for ${{ inputs.environment }}"
           fi
+
+  notify-diff:
+    name: Notify Git Diff
+    needs: git-diff-url
+    if: needs.git-diff-url.outputs.compare_url != ''
+    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: "New changelog for ${{ github.event.repository.name }} ${{ needs.git-diff-url.outputs.short_sha }} in ${{ inputs.environment }}\n${{ needs.git-diff-url.outputs.compare_url }}"
+    secrets: inherit
 
   tf-plan:
     name: Terraform Plan
