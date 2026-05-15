@@ -26,10 +26,6 @@ on:
         type: boolean
         default: true
 
-concurrency:
-  group: cd-${{ inputs.environment }}-${{ github.repository }}
-  cancel-in-progress: false
-
 jobs:
   git-diff-url:
     name: Git Diff URL
@@ -90,6 +86,9 @@ jobs:
   tf-apply:
     name: Terraform Apply
     needs: [tf-plan]
+    concurrency:
+      group: cd-deploy-${{ inputs.environment }}-${{ github.repository }}
+      cancel-in-progress: false
     uses: entur/gha-terraform/.github/workflows/apply.yml@v2
     with:
       environment: ${{ inputs.environment }}
@@ -101,6 +100,9 @@ jobs:
     needs: [tf-apply]
     # Terraform apply is skipped on empty plan. This if ensures that job is run even if previous step is skipped
     if: always() && !cancelled() && !contains(needs.*.result, 'failure')
+    concurrency:
+      group: cd-deploy-${{ inputs.environment }}-${{ github.repository }}
+      cancel-in-progress: false
     uses: entur/gha-helm/.github/workflows/deploy.yml@v1
     with:
       environment: ${{ inputs.environment }}
