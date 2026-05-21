@@ -2,8 +2,23 @@ name: Auto Merge
 on:
   workflow_call:
     inputs:
-      self-check:
-        description: "Calling workflow will check if auto-deploy should happen"
+      dry-run:
+        description: "When true, the workflow reports what it would merge but does not actually call `gh pr merge`."
+        required: false
+        type: boolean
+        default: false
+      auto-merge-patch:
+        description: "Auto-merge dependabot PRs whose highest semver bump is patch."
+        required: false
+        type: boolean
+        default: false
+      auto-merge-minor:
+        description: "Auto-merge dependabot PRs whose highest semver bump is minor."
+        required: false
+        type: boolean
+        default: false
+      auto-merge-major:
+        description: "Auto-merge dependabot PRs whose highest semver bump is major. Use with care."
         required: false
         type: boolean
         default: false
@@ -16,9 +31,8 @@ on:
 jobs:
   auto-merge:
     if: >
-      (inputs.self-check == true) ||
-        (github.event.pull_request.user.login == 'dependabot[bot]' &&
-        contains(github.event.pull_request.head.ref,'auto-merge-'))
+      (inputs.dry-run == true) ||
+        (github.event.pull_request.user.login == 'dependabot[bot]')
     runs-on: ubuntu-24.04
     permissions:
       pull-requests: write
@@ -28,16 +42,65 @@ jobs:
       deploy-message: ${{ steps.merge-it.outputs.message }}
     steps:
       - uses: actions/checkout@v4
+      - name: Dependabot metadata
+        id: meta
+        if: github.event.pull_request.user.login == 'dependabot[bot]'
+        uses: dependabot/fetch-metadata@v2
+      - name: Decide whether to auto-merge
+        id: decide
+        if: github.event.pull_request.user.login == 'dependabot[bot]'
+        env:
+          UPDATE_TYPE: ${{ steps.meta.outputs.update-type }}
+          ALLOW_PATCH: ${{ inputs.auto-merge-patch }}
+          ALLOW_MINOR: ${{ inputs.auto-merge-minor }}
+          ALLOW_MAJOR: ${{ inputs.auto-merge-major }}
+        run: |
+          echo "Update type: ${UPDATE_TYPE:-unknown}" >> $GITHUB_STEP_SUMMARY
+          should_merge=false
+          case "$UPDATE_TYPE" in
+            version-update:semver-patch) [ "$ALLOW_PATCH" = "true" ] && should_merge=true ;;
+            version-update:semver-minor) [ "$ALLOW_MINOR" = "true" ] && should_merge=true ;;
+            version-update:semver-major) [ "$ALLOW_MAJOR" = "true" ] && should_merge=true ;;
+          esac
+          echo "should-merge=$should_merge" >> $GITHUB_OUTPUT
+          if [ "$should_merge" = "false" ]; then
+            echo "Auto-merge skipped: update-type '${UPDATE_TYPE:-unknown}' not enabled by caller." >> $GITHUB_STEP_SUMMARY
+          fi
+      - name: Dry-run report
+        if: inputs.dry-run == true
+        env:
+          REF: ${{ github.event.pull_request.head.ref }}
+          UPDATE_TYPE: ${{ steps.meta.outputs.update-type }}
+          SHOULD_MERGE: ${{ steps.decide.outputs.should-merge }}
+        run: |
+          echo "## Dry-run mode" >> $GITHUB_STEP_SUMMARY
+          echo "No \`gh pr merge\` will be executed." >> $GITHUB_STEP_SUMMARY
+          if [ -n "$UPDATE_TYPE" ]; then
+            echo "- Update type: \`$UPDATE_TYPE\`" >> $GITHUB_STEP_SUMMARY
+            if [ "$SHOULD_MERGE" = "true" ]; then
+              echo "- Would have auto-merged \`$REF\`." >> $GITHUB_STEP_SUMMARY
+            else
+              echo "- Would **not** have auto-merged \`$REF\` (update-type not enabled by caller)." >> $GITHUB_STEP_SUMMARY
+            fi
+          else
+            echo "- Non-dependabot PR; no merge would have been attempted." >> $GITHUB_STEP_SUMMARY
+          fi
       - name: Do merge
         id: merge-it
+        if: >
+          inputs.dry-run != true &&
+          steps.decide.outputs.should-merge == 'true'
         env:
           GH_TOKEN: ${{ github.token }}
           REF: ${{ github.event.pull_request.head.ref }}
         run: |
           echo "Attempting to auto-merge $REF" >> $GITHUB_STEP_SUMMARY
+          # --auto defers the merge until all required status checks pass
+          # and the branch is up to date; relies on branch protection being
+          # configured to require checks.
           gh pr merge --auto --squash "$REF"
           echo "message=Automatically merged dependabot branch $REF" >> $GITHUB_OUTPUT
-          echo "Successfully auto-merged $REF" >> $GITHUB_STEP_SUMMARY
+          echo "Successfully queued auto-merge for $REF" >> $GITHUB_STEP_SUMMARY
 
   post-to-slack-if-merged:
     needs: auto-merge
