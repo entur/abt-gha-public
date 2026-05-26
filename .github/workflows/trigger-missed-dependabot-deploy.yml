@@ -1,0 +1,69 @@
+name: Trigger Missed Dependabot Deploy
+# When dependabot PRs are auto-merged via `gh pr merge --auto`, the resulting
+# push on main is attributed to GITHUB_TOKEN and does not trigger downstream
+# workflows. This workflow inspects the latest commit on a ref and, if it is a
+# dependabot commit with no run of the target deploy workflow, dispatches it.
+on:
+  workflow_call:
+    inputs:
+      target-workflow:
+        description: "Workflow filename to dispatch when a missed deploy is detected (e.g. deploy-main.yml)."
+        required: true
+        type: string
+      target-ref:
+        description: "Ref to inspect and dispatch the target workflow against."
+        required: false
+        type: string
+        default: main
+      dry-run:
+        description: "When true, the workflow reports what it would do but does not dispatch."
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  check-and-trigger:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: write
+    steps:
+      - name: Inspect latest commit and dispatch if needed
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          REF: ${{ inputs.target-ref }}
+          TARGET_WORKFLOW: ${{ inputs.target-workflow }}
+          DRY_RUN: ${{ inputs.dry-run }}
+        run: |
+          set -euo pipefail
+
+          SHA=$(gh api "repos/${REPO}/commits/${REF}" --jq '.sha')
+          AUTHOR=$(gh api "repos/${REPO}/commits/${SHA}" --jq '.author.login // ""')
+          echo "Latest commit on ${REF}: ${SHA} (author: ${AUTHOR:-unknown})" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$AUTHOR" != "dependabot[bot]" ]; then
+            echo "Latest commit is not from dependabot; nothing to do." >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+
+          RUNS=$(gh api "repos/${REPO}/actions/workflows/${TARGET_WORKFLOW}/runs?head_sha=${SHA}&per_page=1" --jq '.total_count')
+          echo "Existing runs of ${TARGET_WORKFLOW} for ${SHA}: ${RUNS}" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$RUNS" -gt 0 ]; then
+            echo "Target workflow has already run for ${SHA}; nothing to do." >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+
+          echo "## Missed deploy detected" >> $GITHUB_STEP_SUMMARY
+          echo "- Ref: \`${REF}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Commit: \`${SHA}\`" >> $GITHUB_STEP_SUMMARY
+          echo "- Target workflow: \`${TARGET_WORKFLOW}\`" >> $GITHUB_STEP_SUMMARY
+
+          if [ "$DRY_RUN" = "true" ]; then
+            echo "Dry-run: would dispatch \`${TARGET_WORKFLOW}\` on \`${REF}\`." >> $GITHUB_STEP_SUMMARY
+            exit 0
+          fi
+
+          gh workflow run "${TARGET_WORKFLOW}" --repo "${REPO}" --ref "${REF}"
+          echo "Dispatched \`${TARGET_WORKFLOW}\` on \`${REF}\`." >> $GITHUB_STEP_SUMMARY
