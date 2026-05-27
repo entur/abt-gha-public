@@ -51,6 +51,7 @@ jobs:
     runs-on: ubuntu-24.04
     permissions:
       pull-requests: write
+      contents: read
     outputs:
       deploy-message: ${{ steps.merge-it.outputs.message }}
     steps:
