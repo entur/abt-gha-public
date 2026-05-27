@@ -22,6 +22,21 @@ on:
         required: false
         type: boolean
         default: false
+      auto-merge-dependencies:
+        description: "Auto-merge library/package dependency updates (maven, gradle, npm, etc.)."
+        required: false
+        type: boolean
+        default: true
+      auto-merge-docker:
+        description: "Auto-merge Docker image updates (the docker ecosystem, including Helm chart images)."
+        required: false
+        type: boolean
+        default: false
+      auto-merge-github-actions:
+        description: "Auto-merge GitHub Actions version updates."
+        required: false
+        type: boolean
+        default: false
       channel-id:
         description: "Slack channel-id to post notification to"
         required: false
@@ -51,36 +66,68 @@ jobs:
         if: github.event.pull_request.user.login == 'dependabot[bot]'
         env:
           UPDATE_TYPE: ${{ steps.meta.outputs.update-type }}
+          PACKAGE_ECOSYSTEM: ${{ steps.meta.outputs.package-ecosystem }}
+          DIRECTORY: ${{ steps.meta.outputs.directory }}
           ALLOW_PATCH: ${{ inputs.auto-merge-patch }}
           ALLOW_MINOR: ${{ inputs.auto-merge-minor }}
           ALLOW_MAJOR: ${{ inputs.auto-merge-major }}
+          ALLOW_DEPENDENCIES: ${{ inputs.auto-merge-dependencies }}
+          ALLOW_DOCKER: ${{ inputs.auto-merge-docker }}
+          ALLOW_GITHUB_ACTIONS: ${{ inputs.auto-merge-github-actions }}
         run: |
           echo "Update type: ${UPDATE_TYPE:-unknown}" >> $GITHUB_STEP_SUMMARY
-          should_merge=false
+          echo "Package ecosystem: ${PACKAGE_ECOSYSTEM:-unknown} (directory: ${DIRECTORY:-unknown})" >> $GITHUB_STEP_SUMMARY
+
+          # Gate 1: the semver bump must be enabled by the caller.
+          semver_ok=false
           case "$UPDATE_TYPE" in
-            version-update:semver-patch) [ "$ALLOW_PATCH" = "true" ] && should_merge=true ;;
-            version-update:semver-minor) [ "$ALLOW_MINOR" = "true" ] && should_merge=true ;;
-            version-update:semver-major) [ "$ALLOW_MAJOR" = "true" ] && should_merge=true ;;
+            version-update:semver-patch) [ "$ALLOW_PATCH" = "true" ] && semver_ok=true ;;
+            version-update:semver-minor) [ "$ALLOW_MINOR" = "true" ] && semver_ok=true ;;
+            version-update:semver-major) [ "$ALLOW_MAJOR" = "true" ] && semver_ok=true ;;
           esac
+
+          # Gate 2: the kind of update must be enabled by the caller. Dependabot
+          # reports the internal ecosystem name (e.g. npm_and_yarn, gradle, maven,
+          # docker, github_actions). The docker category covers all docker image
+          # bumps, including those in Helm chart directories. Anything that is
+          # not docker/github_actions is treated as a library dependency.
+          category=dependencies
+          allow_flag="$ALLOW_DEPENDENCIES"
+          case "$PACKAGE_ECOSYSTEM" in
+            docker)
+              category=docker; allow_flag="$ALLOW_DOCKER" ;;
+            github_actions)
+              category=github-actions; allow_flag="$ALLOW_GITHUB_ACTIONS" ;;
+          esac
+          ecosystem_ok=false
+          [ "$allow_flag" = "true" ] && ecosystem_ok=true
+
+          should_merge=false
+          [ "$semver_ok" = "true" ] && [ "$ecosystem_ok" = "true" ] && should_merge=true
           echo "should-merge=$should_merge" >> $GITHUB_OUTPUT
+          echo "category=$category" >> $GITHUB_OUTPUT
+          echo "Category: $category (enabled: $ecosystem_ok), semver enabled: $semver_ok" >> $GITHUB_STEP_SUMMARY
           if [ "$should_merge" = "false" ]; then
-            echo "Auto-merge skipped: update-type '${UPDATE_TYPE:-unknown}' not enabled by caller." >> $GITHUB_STEP_SUMMARY
+            echo "Auto-merge skipped: update-type '${UPDATE_TYPE:-unknown}' / category '$category' not both enabled by caller." >> $GITHUB_STEP_SUMMARY
           fi
       - name: Dry-run report
         if: inputs.dry-run == true
         env:
           REF: ${{ github.event.pull_request.head.ref }}
           UPDATE_TYPE: ${{ steps.meta.outputs.update-type }}
+          PACKAGE_ECOSYSTEM: ${{ steps.meta.outputs.package-ecosystem }}
+          CATEGORY: ${{ steps.decide.outputs.category }}
           SHOULD_MERGE: ${{ steps.decide.outputs.should-merge }}
         run: |
           echo "## Dry-run mode" >> $GITHUB_STEP_SUMMARY
           echo "No \`gh pr merge\` will be executed." >> $GITHUB_STEP_SUMMARY
           if [ -n "$UPDATE_TYPE" ]; then
             echo "- Update type: \`$UPDATE_TYPE\`" >> $GITHUB_STEP_SUMMARY
+            echo "- Ecosystem: \`${PACKAGE_ECOSYSTEM:-unknown}\` (category: \`${CATEGORY:-unknown}\`)" >> $GITHUB_STEP_SUMMARY
             if [ "$SHOULD_MERGE" = "true" ]; then
               echo "- Would have auto-merged \`$REF\`." >> $GITHUB_STEP_SUMMARY
             else
-              echo "- Would **not** have auto-merged \`$REF\` (update-type not enabled by caller)." >> $GITHUB_STEP_SUMMARY
+              echo "- Would **not** have auto-merged \`$REF\` (update-type or category not enabled by caller)." >> $GITHUB_STEP_SUMMARY
             fi
           else
             echo "- Non-dependabot PR; no merge would have been attempted." >> $GITHUB_STEP_SUMMARY
