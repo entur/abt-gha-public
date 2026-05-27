@@ -141,13 +141,20 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REF: ${{ github.event.pull_request.head.ref }}
         run: |
-          echo "Attempting to auto-merge $REF" >> $GITHUB_STEP_SUMMARY
+          # Check BEFORE merging: if auto-merge is already queued (e.g. because
+          # Dependabot rebased the PR after another PR was merged to main), we
+          # skip the Slack notification to avoid a cascade of duplicate messages.
+          ALREADY_QUEUED=$(gh pr view "$REF" --json autoMergeRequest --jq '.autoMergeRequest != null')
           # --auto defers the merge until all required status checks pass
           # and the branch is up to date; relies on branch protection being
           # configured to require checks.
           gh pr merge --auto --squash "$REF"
-          echo "message=Automatically merged dependabot branch $REF" >> $GITHUB_OUTPUT
-          echo "Successfully queued auto-merge for $REF" >> $GITHUB_STEP_SUMMARY
+          if [ "$ALREADY_QUEUED" = "false" ]; then
+            echo "message=Automatically merged dependabot branch $REF" >> $GITHUB_OUTPUT
+            echo "Queued auto-merge for $REF (first time — Slack notification will be sent)" >> $GITHUB_STEP_SUMMARY
+          else
+            echo "Auto-merge already queued for $REF — skipping duplicate Slack notification" >> $GITHUB_STEP_SUMMARY
+          fi
 
   post-to-slack-if-merged:
     needs: auto-merge
