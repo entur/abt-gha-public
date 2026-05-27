@@ -20,15 +20,24 @@ on:
         required: false
         type: boolean
         default: false
+      channel-id:
+        description: "Slack channel-id to post notification to"
+        required: false
+        type: string
+        default: ${{ vars.channel_id || 'NO_ID'}}
 
 jobs:
   check-and-trigger:
-    runs-on: ubuntu-24.04
+    runs-on: ubuntu-latest
     permissions:
       contents: read
       actions: write
+    outputs:
+      dispatched: ${{ steps.inspect.outputs.dispatched }}
+      sha: ${{ steps.inspect.outputs.sha }}
     steps:
       - name: Inspect latest commit and dispatch if needed
+        id: inspect
         env:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
@@ -41,9 +50,11 @@ jobs:
           SHA=$(gh api "repos/${REPO}/commits/${REF}" --jq '.sha')
           AUTHOR=$(gh api "repos/${REPO}/commits/${SHA}" --jq '.author.login // ""')
           echo "Latest commit on ${REF}: ${SHA} (author: ${AUTHOR:-unknown})" >> $GITHUB_STEP_SUMMARY
+          echo "sha=${SHA}" >> $GITHUB_OUTPUT
 
           if [ "$AUTHOR" != "dependabot[bot]" ]; then
             echo "Latest commit is not from dependabot; nothing to do." >> $GITHUB_STEP_SUMMARY
+            echo "dispatched=false" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -52,6 +63,7 @@ jobs:
 
           if [ "$RUNS" -gt 0 ]; then
             echo "Target workflow has already run for ${SHA}; nothing to do." >> $GITHUB_STEP_SUMMARY
+            echo "dispatched=false" >> $GITHUB_OUTPUT
             exit 0
           fi
 
@@ -62,8 +74,28 @@ jobs:
 
           if [ "$DRY_RUN" = "true" ]; then
             echo "Dry-run: would dispatch \`${TARGET_WORKFLOW}\` on \`${REF}\`." >> $GITHUB_STEP_SUMMARY
+            echo "dispatched=false" >> $GITHUB_OUTPUT
             exit 0
           fi
 
           gh workflow run "${TARGET_WORKFLOW}" --repo "${REPO}" --ref "${REF}"
           echo "Dispatched \`${TARGET_WORKFLOW}\` on \`${REF}\`." >> $GITHUB_STEP_SUMMARY
+          echo "dispatched=true" >> $GITHUB_OUTPUT
+
+  post-to-slack-if-dispatched:
+    needs: check-and-trigger
+    if: success() && needs.check-and-trigger.outputs.dispatched == 'true' && inputs.channel-id != 'NO_ID'
+    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: "🔵 ${{ github.repository }} - Triggered missed dependabot deploy on `${{ inputs.target-ref }}` (${{ needs.check-and-trigger.outputs.sha }})"
+    secrets: inherit
+
+  post-fail-to-slack-if-fail:
+    needs: check-and-trigger
+    if: failure() && inputs.channel-id != 'NO_ID'
+    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: "⚫ Trigger missed dependabot deploy failed on `${{ inputs.target-ref }}`"
+    secrets: inherit

@@ -165,5 +165,5 @@ jobs:
     uses: entur/gha-slack/.github/workflows/post.yml@v2
     with:
       channel_id: ${{ inputs.channel-id }}
-      message: "⚫ Automerge of dependabot PR failed. This is most likely due to branch being behind HEAD on main, and will be resolved by dependabot. ${{ github.event.pull_request.head.ref }}"
+      message: "⚫ Automerge of dependabot PR failed. <${{ github.event.pull_request.html_url }}|${{ github.event.pull_request.head.ref }}>"
     secrets: inherit
