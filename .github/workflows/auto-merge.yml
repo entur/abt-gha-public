@@ -132,29 +132,34 @@ jobs:
           else
             echo "- Non-dependabot PR; no merge would have been attempted." >> $GITHUB_STEP_SUMMARY
           fi
-      - name: Do merge
-        id: merge-it
+      - name: Queue auto-merge
         if: >
           inputs.dry-run != true &&
-          steps.decide.outputs.should-merge == 'true'
+          steps.decide.outputs.should-merge == 'true' &&
+          github.event.action != 'closed'
         env:
           GH_TOKEN: ${{ github.token }}
           REF: ${{ github.event.pull_request.head.ref }}
         run: |
-          # Check BEFORE merging: if auto-merge is already queued (e.g. because
-          # Dependabot rebased the PR after another PR was merged to main), we
-          # skip the Slack notification to avoid a cascade of duplicate messages.
-          ALREADY_QUEUED=$(gh pr view "$REF" --json autoMergeRequest --jq '.autoMergeRequest != null')
           # --auto defers the merge until all required status checks pass
           # and the branch is up to date; relies on branch protection being
-          # configured to require checks.
+          # configured to require checks. Calling it again on rebase (synchronize)
+          # is idempotent — no notification is sent here; that happens on 'closed'.
           gh pr merge --auto --squash "$REF"
-          if [ "$ALREADY_QUEUED" = "false" ]; then
-            echo "message=Automatically merged dependabot branch $REF" >> $GITHUB_OUTPUT
-            echo "Queued auto-merge for $REF (first time — Slack notification will be sent)" >> $GITHUB_STEP_SUMMARY
-          else
-            echo "Auto-merge already queued for $REF — skipping duplicate Slack notification" >> $GITHUB_STEP_SUMMARY
-          fi
+          echo "Queued auto-merge for $REF" >> $GITHUB_STEP_SUMMARY
+
+      - name: Report merged
+        id: merge-it
+        if: >
+          inputs.dry-run != true &&
+          steps.decide.outputs.should-merge == 'true' &&
+          github.event.action == 'closed' &&
+          github.event.pull_request.merged == true
+        env:
+          REF: ${{ github.event.pull_request.head.ref }}
+        run: |
+          echo "message=Automatically merged dependabot branch $REF" >> $GITHUB_OUTPUT
+          echo "PR $REF was merged — Slack notification will be sent" >> $GITHUB_STEP_SUMMARY
 
   post-to-slack-if-merged:
     needs: auto-merge
