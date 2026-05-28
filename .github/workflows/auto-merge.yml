@@ -52,8 +52,6 @@ jobs:
     permissions:
       pull-requests: write
       contents: write
-    outputs:
-      deploy-message: ${{ steps.merge-it.outputs.message }}
     steps:
       - uses: actions/checkout@v4
       - name: Dependabot metadata
@@ -146,29 +144,6 @@ jobs:
           # is idempotent — no notification is sent here; that happens on 'closed'.
           gh pr merge --auto --squash "$REF"
           echo "Queued auto-merge for $REF" >> $GITHUB_STEP_SUMMARY
-
-      - name: Report merged
-        id: merge-it
-        if: >
-          inputs.dry-run != true &&
-          steps.decide.outputs.should-merge == 'true' &&
-          github.event.action == 'closed' &&
-          github.event.pull_request.merged == true
-        env:
-          REF: ${{ github.event.pull_request.head.ref }}
-        run: |
-          echo "message=Automatically merged dependabot branch $REF" >> $GITHUB_OUTPUT
-          echo "PR $REF was merged — Slack notification will be sent" >> $GITHUB_STEP_SUMMARY
-
-  post-to-slack-if-merged:
-    needs: auto-merge
-    # The contains bit is important to prevent empty messages in case aut-merge step was skipped (not failed)
-    if: success() && contains(needs.auto-merge.outputs.deploy-message,'Automatically merged') && inputs.channel-id != 'NO_ID'
-    uses: entur/gha-slack/.github/workflows/post.yml@v2
-    with:
-      channel_id: ${{ inputs.channel-id }}
-      message: "🔵 ${{ github.repository }} - ${{ needs.auto-merge.outputs.deploy-message }}"
-    secrets: inherit
 
   post-fail-to-slack-if-fail:
     needs: auto-merge
