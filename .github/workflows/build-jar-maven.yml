@@ -15,7 +15,7 @@ on:
 
 jobs:
   maven-build:
-    if: github.event_name == 'push' && github.ref_name == 'main'
+    if: github.ref_name == 'main'
     runs-on: ubuntu-24.04
     permissions:
       contents: read
