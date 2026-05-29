@@ -137,5 +137,5 @@ jobs:
     uses: entur/gha-slack/.github/workflows/post.yml@v2
     with:
       channel_id: ${{ inputs.channel-id }}
-      message: "⚫ Trigger missed dependabot deploy failed on ${{ inputs.target-ref }}"
+      message: "⚫ ${{ github.repository }} - Trigger missed dependabot deploy failed on ${{ inputs.target-ref }}"
     secrets: inherit
