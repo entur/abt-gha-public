@@ -85,7 +85,7 @@ jobs:
         with:
           ref: ${{ inputs.ref }}
           fetch-tags: true
-          fetch-depth: inputs.fetch-depth
+          fetch-depth: ${{ inputs.fetch-depth }}
       - name: Set up Java ${{ inputs.java-version }}
         uses: actions/setup-java@v5
         with:
