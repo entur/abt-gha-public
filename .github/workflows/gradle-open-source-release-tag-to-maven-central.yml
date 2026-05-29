@@ -75,24 +75,24 @@ jobs:
       tag: ${{ steps.publish.outputs.tag }}
     runs-on: ${{ inputs.runs-on }}
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v6
         if: inputs.ref == ''
         with:
           fetch-tags: true
-          fetch-depth: inputs.fetch-depth
-      - uses: actions/checkout@v4
+          fetch-depth: ${{ inputs.fetch-depth }}
+      - uses: actions/checkout@v6
         if: inputs.ref != ''
         with:
-          ref: ${{ inputs.inputs.ref }}
+          ref: ${{ inputs.ref }}
           fetch-tags: true
-          fetch-depth: inputs.fetch-depth
+          fetch-depth: ${{ inputs.fetch-depth }}
       - name: Set up Java ${{ inputs.java-version }}
-        uses: actions/setup-java@v4
+        uses: actions/setup-java@v5
         with:
           java-version: ${{ inputs.java-version }}
           distribution: ${{ inputs.java-distribution }}
       - name: Setup Gradle
-        uses: gradle/actions/setup-gradle@v4
+        uses: gradle/actions/setup-gradle@v5
       - name: Publish
         id: publish
         env:
@@ -146,7 +146,7 @@ jobs:
           echo "tag=$RELEASE_TAG" >> $GITHUB_OUTPUT
       - name: Store build reports
         if: failure()
-        uses: actions/upload-artifact@v4
+        uses: actions/upload-artifact@v7
         with:
           name: reports-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: |
