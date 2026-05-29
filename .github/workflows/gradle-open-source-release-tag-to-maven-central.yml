@@ -79,7 +79,7 @@ jobs:
         if: inputs.ref == ''
         with:
           fetch-tags: true
-          fetch-depth: inputs.fetch-depth
+          fetch-depth: ${{ inputs.fetch-depth }}
       - uses: actions/checkout@v6
         if: inputs.ref != ''
         with:
