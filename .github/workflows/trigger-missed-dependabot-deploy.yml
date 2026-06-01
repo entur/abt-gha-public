@@ -74,8 +74,20 @@ jobs:
 
           if [ -n "$LAST_DEPLOYED_SHA" ] && [ "$LAST_DEPLOYED_SHA" != "$SHA" ]; then
             COMMITS=$(gh api "repos/${REPO}/compare/${LAST_DEPLOYED_SHA}...${SHA}" --jq '
-              [.commits[]
-               | select(.author.login == "dependabot[bot]")
+              [.commits
+               | reverse
+               | reduce .[] as $c (
+                   {done: false, result: []};
+                   if .done then .
+                   elif ($c.author.login == "dependabot[bot]") then
+                     .result += [$c]
+                   else
+                     {done: true, result: .result}
+                   end
+                 )
+               | .result
+               | reverse
+               | .[]
                | .commit.message
                | split("\n")[0]
                | if test("\\(#[0-9]+\\)$") then
