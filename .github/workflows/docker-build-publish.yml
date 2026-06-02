@@ -56,7 +56,7 @@ jobs:
       image_artifact: ${{ needs.docker-build.outputs.image_artifact }}
 
   docker-push:
-    needs: docker-scan
+    needs: docker-build
     if: inputs.dry-run == 'false'
     uses: entur/gha-docker/.github/workflows/push.yml@v1
 

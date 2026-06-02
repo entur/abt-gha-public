@@ -15,11 +15,11 @@ on:
         description: Slack channel ID for deployment notifications
         required: true
         type: string
-      image-set-path:
-        description: Comma-separated Helm values path(s) for the container image. See gha-helm deploy.yml for details.
+      container-name:
+        description: "Replace the image of a named container in the common.containers array. Resolves the array index automatically using the container name in values.yaml"
         required: false
         type: string
-        default: "common.container.image"
+        default: ""
       notify-changelog:
         description: Whether to post a changelog Slack notification on deployment
         required: false
@@ -108,5 +108,5 @@ jobs:
       environment: ${{ inputs.environment }}
       image: ${{ inputs.image }}
       slack_channel_id: ${{ inputs.channel-id }}
-      image_set_path: ${{ inputs.image-set-path }}
+      container_name: ${{ inputs.container-name }}
     secrets: inherit
