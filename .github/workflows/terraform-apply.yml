@@ -14,10 +14,6 @@ on:
         description: Whether the plan has changes to apply (from terraform-plan output)
         required: true
         type: string
-      container-name:
-        description: "Replace the image of a named container in the common.containers array. Resolves the array index automatically using the container name in values.yaml"
-        required: false
-        type: string
 
 jobs:
   tf-apply:
@@ -30,5 +26,4 @@ jobs:
     with:
       environment: ${{ inputs.environment }}
       has_changes: ${{ inputs.has_changes }}
-      container_name: ${{ inputs.container-name }}
     
