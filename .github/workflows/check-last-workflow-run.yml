@@ -34,6 +34,7 @@ jobs:
   check-last-run:
     runs-on: ubuntu-latest
     permissions:
+      contents: read
       actions: write
     outputs:
       stale: ${{ steps.check.outputs.stale }}
