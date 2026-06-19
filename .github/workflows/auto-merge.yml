@@ -57,7 +57,7 @@ jobs:
       - name: Dependabot metadata
         id: meta
         if: github.event.pull_request.user.login == 'dependabot[bot]'
-        uses: dependabot/fetch-metadata@v2
+        uses: dependabot/fetch-metadata@v3
       - name: Decide whether to auto-merge
         id: decide
         if: github.event.pull_request.user.login == 'dependabot[bot]'
