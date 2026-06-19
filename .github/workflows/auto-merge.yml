@@ -53,11 +53,11 @@ jobs:
       pull-requests: write
       contents: write
     steps:
-      - uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5 # v4
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
       - name: Dependabot metadata
         id: meta
         if: github.event.pull_request.user.login == 'dependabot[bot]'
-        uses: dependabot/fetch-metadata@21025c705c08248db411dc16f3619e6b5f9ea21a # v2
+        uses: dependabot/fetch-metadata@25dd0e34f4fe68f24cc83900b1fe3fe149efef98 # v3.1.0
       - name: Decide whether to auto-merge
         id: decide
         if: github.event.pull_request.user.login == 'dependabot[bot]'
