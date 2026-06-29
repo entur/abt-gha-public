@@ -1,16 +1,8 @@
 name: Check Last Workflow Run (Maven)
-# Evaluates all commits since the last release tag and decides whether a
-# release workflow should be dispatched.
-#
-# Release is SKIPPED only when every unreleased commit is one of:
-#   • A documentation/README-only change
-#   • A commit whose message contains a ci-skip marker
-#   • A dependabot-authored pom.xml change that only updates Maven plugins
-#     (logic from check-plugin-change.sh) or test-scoped dependencies
-#     (logic from check-test-dependency-check.sh)
-#
-# If at least one commit does not match any of these conditions the workflow
-# sets should-release=true and (optionally) dispatches the target workflow.
+# Evaluates all dependabot commits since the last release tag.
+# Release is triggered only when at least one dependabot commit is NOT
+# a Maven plugin or test-scoped dependency update.
+# Non-dependabot commits are ignored entirely.
 on:
   workflow_call:
     inputs:
@@ -18,8 +10,8 @@ on:
         description: "Workflow filename to dispatch when release-worthy commits are found (e.g. maven-release.yml)."
         required: true
         type: string
-      target-ref:
-        description: "Branch/ref to check commits against."
+      release-branch:
+        description: "Branch to check commits against."
         required: false
         type: string
         default: main
@@ -90,7 +82,7 @@ jobs:
           GH_TOKEN: ${{ github.token }}
           REPO: ${{ github.repository }}
           WORKFLOW: ${{ inputs.workflow }}
-          TARGET_REF: ${{ inputs.target-ref }}
+          RELEASE_BRANCH: ${{ inputs.release-branch }}
           RELEASE_PREFIX: ${{ inputs.release-prefix }}
           TRIGGER_RELEASE: ${{ inputs.trigger-release }}
         run: |
@@ -213,67 +205,31 @@ jobs:
 
           while IFS= read -r COMMIT; do
             SHORT="${COMMIT:0:8}"
-            MSG=$(git show -s --format=%B "$COMMIT")
-            MSG_FIRST=$(echo "$MSG" | head -1)
+            MSG_FIRST=$(git show -s --format=%s "$COMMIT")
             AUTHOR=$(git show -s --format=%aN "$COMMIT")
-            CHANGED_FILES=$(git diff --name-only "${COMMIT}^" "$COMMIT" 2>/dev/null || true)
 
-            # 1. ci-skip marker in commit message
-            if echo "$MSG" | grep -qiE '\[ci[ -]skip\]|\[skip[ -]ci\]|\[no[ -]ci\]|\[skip actions\]|\[actions skip\]|skip-checks:[ ]?true'; then
-              echo "| \`${SHORT}\` | ⏭️ Skip | ci-skip in message |" >> "$GITHUB_STEP_SUMMARY"
+            # Only dependabot commits are considered; non-dependabot commits are ignored.
+            if [ "$AUTHOR" != "dependabot[bot]" ]; then
+              echo "| \`${SHORT}\` | ⏭️ Skip | non-dependabot commit (ignored) |" >> "$GITHUB_STEP_SUMMARY"
               continue
             fi
 
-            # 2. Documentation / README-only change
-            README_ONLY=true
-            while IFS= read -r FILE; do
-              [ -z "$FILE" ] && continue
-              if ! echo "$FILE" | grep -qiE '(^|/)readme[^/]*$|\.(md|txt|rst|adoc)$|(^|/)docs/'; then
-                README_ONLY=false
-                break
-              fi
-            done <<< "$CHANGED_FILES"
-
-            if [ "$README_ONLY" = "true" ]; then
-              echo "| \`${SHORT}\` | ⏭️ Skip | docs/readme only |" >> "$GITHUB_STEP_SUMMARY"
-              continue
+            # Dependabot commit: skip only if it is a plugin or test-dep update.
+            if bash "$CHECK_DEPENDABOT" "$COMMIT" > /dev/null 2>&1; then
+              echo "| \`${SHORT}\` | ⏭️ Skip | dependabot plugin/test-dep update |" >> "$GITHUB_STEP_SUMMARY"
+            else
+              echo "| \`${SHORT}\` | 🚀 Release | ${MSG_FIRST} (dependabot — not a plugin/test-dep update) |" >> "$GITHUB_STEP_SUMMARY"
+              ALL_SKIP=false
             fi
-
-            # 3. Test-source-only change (src/test/** in any submodule)
-            TEST_SRC_ONLY=true
-            while IFS= read -r FILE; do
-              [ -z "$FILE" ] && continue
-              if ! echo "$FILE" | grep -qE '(^|/)src/test/'; then
-                TEST_SRC_ONLY=false
-                break
-              fi
-            done <<< "$CHANGED_FILES"
-
-            if [ "$TEST_SRC_ONLY" = "true" ]; then
-              echo "| \`${SHORT}\` | ⏭️ Skip | src/test only |" >> "$GITHUB_STEP_SUMMARY"
-              continue
-            fi
-
-            # 4. Dependabot plugin or test-dependency update
-            if [ "$AUTHOR" = "dependabot[bot]" ]; then
-              if bash "$CHECK_DEPENDABOT" "$COMMIT" > /dev/null 2>&1; then
-                echo "| \`${SHORT}\` | ⏭️ Skip | dependabot plugin/test-dep update |" >> "$GITHUB_STEP_SUMMARY"
-                continue
-              fi
-            fi
-
-            # Not skip-worthy
-            echo "| \`${SHORT}\` | 🚀 Release | ${MSG_FIRST} (${AUTHOR}) |" >> "$GITHUB_STEP_SUMMARY"
-            ALL_SKIP=false
           done <<< "$COMMITS"
 
           echo "" >> "$GITHUB_STEP_SUMMARY"
 
           if [ "$ALL_SKIP" = "true" ]; then
-            echo "**Decision: ⏭️ All commits are skip-worthy — no release triggered.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "**Decision: ⏭️ All commits are dependabot plugin/test-dep updates — no release triggered.**" >> "$GITHUB_STEP_SUMMARY"
             echo "should-release=false" >> "$GITHUB_OUTPUT"
             echo "dispatched=false"     >> "$GITHUB_OUTPUT"
-            echo "status-text=all commits since ${LATEST_TAG} are skip-worthy (docs, ci-skip, or dependabot test/plugin)" >> "$GITHUB_OUTPUT"
+            echo "status-text=all commits since ${LATEST_TAG} are dependabot plugin/test-dep updates" >> "$GITHUB_OUTPUT"
             exit 0
           fi
 
@@ -281,10 +237,10 @@ jobs:
           echo "should-release=true" >> "$GITHUB_OUTPUT"
 
           if [ "$TRIGGER_RELEASE" = "true" ]; then
-            gh workflow run "${WORKFLOW}" --repo "${REPO}" --ref "${TARGET_REF}"
-            echo "Dispatched \`${WORKFLOW}\` on \`${TARGET_REF}\`." >> "$GITHUB_STEP_SUMMARY"
+            gh workflow run "${WORKFLOW}" --repo "${REPO}" --ref "${RELEASE_BRANCH}"
+            echo "Dispatched \`${WORKFLOW}\` on \`${RELEASE_BRANCH}\`." >> "$GITHUB_STEP_SUMMARY"
             echo "dispatched=true" >> "$GITHUB_OUTPUT"
-            echo "status-text=dispatched ${WORKFLOW} on ${TARGET_REF} — release-worthy commits found since ${LATEST_TAG}" >> "$GITHUB_OUTPUT"
+            echo "status-text=dispatched ${WORKFLOW} on ${RELEASE_BRANCH} — release-worthy dependabot commits found since ${LATEST_TAG}" >> "$GITHUB_OUTPUT"
           else
             echo "dispatched=false" >> "$GITHUB_OUTPUT"
             echo "status-text=release-worthy commits found since ${LATEST_TAG} (trigger-release=false; not dispatched)" >> "$GITHUB_OUTPUT"
@@ -296,7 +252,7 @@ jobs:
     uses: entur/gha-slack/.github/workflows/post.yml@v2
     with:
       channel_id: ${{ inputs.channel-id }}
-      message: "🔵 ${{ github.repository }} - Triggered ${{ inputs.workflow }} on ${{ inputs.target-ref }} (${{ needs.check-maven-commits.outputs.status-text }})"
+      message: "🔵 ${{ github.repository }} - Triggered ${{ inputs.workflow }} on ${{ inputs.release-branch }} (${{ needs.check-maven-commits.outputs.status-text }})"
     secrets: inherit
 
   post-to-slack-if-skipped:
