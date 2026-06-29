@@ -59,6 +59,7 @@ jobs:
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
         with:
+          ref: ${{ inputs.release-branch }}
           fetch-depth: 0
           fetch-tags: true
 
@@ -172,7 +173,10 @@ jobs:
           # ── Evaluate each commit since the last release tag ───────────────────
           echo "## Maven Release Check" >> "$GITHUB_STEP_SUMMARY"
 
-          LATEST_TAG=$(git describe --tags --match "${RELEASE_PREFIX}*" --abbrev=0 2>/dev/null || echo "")
+          BRANCH_TIP=$(git rev-parse "${RELEASE_BRANCH}")
+          echo "**Branch:** \`${RELEASE_BRANCH}\` @ \`${BRANCH_TIP:0:8}\`" >> "$GITHUB_STEP_SUMMARY"
+
+          LATEST_TAG=$(git describe --tags --match "${RELEASE_PREFIX}*" --abbrev=0 "${BRANCH_TIP}" 2>/dev/null || echo "")
 
           if [ -z "$LATEST_TAG" ]; then
             echo "**No release tag found** — treating as needing a release." >> "$GITHUB_STEP_SUMMARY"
@@ -185,7 +189,7 @@ jobs:
           echo "**Latest release tag:** \`${LATEST_TAG}\`" >> "$GITHUB_STEP_SUMMARY"
 
           RELEASE_HASH=$(git rev-list -n 1 "${LATEST_TAG}")
-          COMMITS=$(git log --format="%H" "${RELEASE_HASH}..HEAD")
+          COMMITS=$(git log --format="%H" "${RELEASE_HASH}..${BRANCH_TIP}")
 
           if [ -z "$COMMITS" ]; then
             echo "**No commits since \`${LATEST_TAG}\`** — nothing to release." >> "$GITHUB_STEP_SUMMARY"
