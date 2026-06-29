@@ -1,4 +1,4 @@
-name: Check Last Workflow Run (Maven)
+name: Check Should Release (Maven)
 # Evaluates all dependabot commits since the last release tag.
 # Release is triggered only when at least one dependabot commit is NOT
 # a Maven plugin or test-scoped dependency update.
@@ -109,6 +109,9 @@ jobs:
           fi
 
           ORIGINAL_REF=$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse HEAD)
+          # Restore the working tree on any exit (including mvn failures) so the
+          # outer script never ends up in a detached HEAD state.
+          trap 'git checkout -q "$ORIGINAL_REF"' EXIT
           MVN_OUTPUT=$(mktemp)
           BEFORE_PLUGINS=$(mktemp)
           AFTER_PLUGINS=$(mktemp)
@@ -122,7 +125,7 @@ jobs:
 
             git checkout -q "$target_commit"
 
-            mvn dependency:resolve-plugins > "$MVN_OUTPUT" 2>&1 || true
+            mvn -B dependency:resolve-plugins > "$MVN_OUTPUT" 2>&1
             awk '
               /The following plugins have been resolved:/ { flag=1; next }
               flag && /----------/ { flag=0 }
@@ -134,7 +137,7 @@ jobs:
               }
             ' "$MVN_OUTPUT" | sort -u > "$plugins_file"
 
-            mvn dependency:resolve > "$MVN_OUTPUT" 2>&1 || true
+            mvn -B dependency:resolve > "$MVN_OUTPUT" 2>&1
             awk '
               /The following files have been resolved:/ { flag=1; next }
               flag && /----------/ { flag=0 }
@@ -153,7 +156,7 @@ jobs:
           run_analysis "$COMMIT_HASH"    "$AFTER_PLUGINS"  "$AFTER_TEST_DEPS"
           run_analysis "${COMMIT_HASH}^" "$BEFORE_PLUGINS" "$BEFORE_TEST_DEPS"
 
-          git checkout -q "$ORIGINAL_REF"
+          # Trap restores ORIGINAL_REF on exit.
 
           PLUGINS_CHANGED=false
           TEST_DEPS_CHANGED=false
@@ -212,7 +215,9 @@ jobs:
             MSG_FIRST=$(git show -s --format=%s "$COMMIT")
             AUTHOR=$(git show -s --format=%aN "$COMMIT")
 
-            # Only dependabot commits are considered; non-dependabot commits are ignored.
+            # Non-dependabot commits are intentionally ignored: this workflow's
+            # sole purpose is to decide whether dependabot-only pom.xml bumps
+            # warrant a release. Human commits are released by normal push triggers.
             if [ "$AUTHOR" != "dependabot[bot]" ]; then
               echo "| \`${SHORT}\` | ⏭️ Skip | non-dependabot commit (ignored) |" >> "$GITHUB_STEP_SUMMARY"
               continue
