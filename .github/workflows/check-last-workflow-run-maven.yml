@@ -1,0 +1,318 @@
+name: Check Last Workflow Run (Maven)
+# Evaluates all commits since the last release tag and decides whether a
+# release workflow should be dispatched.
+#
+# Release is SKIPPED only when every unreleased commit is one of:
+#   • A documentation/README-only change
+#   • A commit whose message contains a ci-skip marker
+#   • A dependabot-authored pom.xml change that only updates Maven plugins
+#     (logic from check-plugin-change.sh) or test-scoped dependencies
+#     (logic from check-test-dependency-check.sh)
+#
+# If at least one commit does not match any of these conditions the workflow
+# sets should-release=true and (optionally) dispatches the target workflow.
+on:
+  workflow_call:
+    inputs:
+      workflow:
+        description: "Workflow filename to dispatch when release-worthy commits are found (e.g. maven-release.yml)."
+        required: true
+        type: string
+      target-ref:
+        description: "Branch/ref to check commits against."
+        required: false
+        type: string
+        default: main
+      release-prefix:
+        description: "Prefix used for release tags."
+        required: false
+        type: string
+        default: "release-"
+      trigger-release:
+        description: "When true, dispatches the workflow if release-worthy commits are found. When false, only reports."
+        required: false
+        type: boolean
+        default: false
+      java-version:
+        description: "Java version used for Maven dependency/plugin analysis."
+        required: false
+        type: string
+        default: "17"
+      channel-id:
+        description: "Slack channel-id to post notification to."
+        required: false
+        type: string
+        default: ${{ vars.channel_id || 'NO_ID'}}
+    outputs:
+      should-release:
+        description: "true when release-worthy commits are found since the last tag."
+        value: ${{ jobs.check-maven-commits.outputs.should-release }}
+      dispatched:
+        description: "true when the target workflow was dispatched."
+        value: ${{ jobs.check-maven-commits.outputs.dispatched }}
+      status-text:
+        description: "Human-readable summary of the decision."
+        value: ${{ jobs.check-maven-commits.outputs.status-text }}
+
+jobs:
+  check-maven-commits:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: write
+    outputs:
+      should-release: ${{ steps.evaluate.outputs.should-release }}
+      dispatched: ${{ steps.evaluate.outputs.dispatched }}
+      status-text: ${{ steps.evaluate.outputs.status-text }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Java ${{ inputs.java-version }}
+        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5.3.0
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: liberica
+
+      - name: Cache Maven repository
+        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+        with:
+          path: ~/.m2/repository
+          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+          restore-keys: |
+            ${{ runner.os }}-maven-
+
+      - name: Evaluate commits since last release tag
+        id: evaluate
+        env:
+          GH_TOKEN: ${{ github.token }}
+          REPO: ${{ github.repository }}
+          WORKFLOW: ${{ inputs.workflow }}
+          TARGET_REF: ${{ inputs.target-ref }}
+          RELEASE_PREFIX: ${{ inputs.release-prefix }}
+          TRIGGER_RELEASE: ${{ inputs.trigger-release }}
+        run: |
+          set -euo pipefail
+
+          # ── Embedded: check-dependabot-pom-update.sh ─────────────────────────
+          # Returns 0 if the commit only updates Maven plugins or test-scoped
+          # dependencies (checked in a single pass to avoid duplicating logic).
+          CHECK_DEPENDABOT=$(mktemp --suffix=.sh)
+          chmod +x "$CHECK_DEPENDABOT"
+          cat > "$CHECK_DEPENDABOT" << 'SCRIPT_EOF'
+          #!/bin/bash
+          set -e
+
+          COMMIT_HASH=$1
+          if [ -z "$COMMIT_HASH" ]; then echo "Error: No commit hash provided."; exit 1; fi
+
+          CHANGED_FILES=$(git diff --name-only "${COMMIT_HASH}^" "$COMMIT_HASH" || true)
+          if [ -z "$CHANGED_FILES" ]; then echo "BREAK: No files changed."; exit 1; fi
+          if [ "$CHANGED_FILES" != "pom.xml" ]; then
+            echo "BREAK: Changed files other than pom.xml."
+            exit 1
+          fi
+
+          ORIGINAL_REF=$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse HEAD)
+          MVN_OUTPUT=$(mktemp)
+          BEFORE_PLUGINS=$(mktemp)
+          AFTER_PLUGINS=$(mktemp)
+          BEFORE_TEST_DEPS=$(mktemp)
+          AFTER_TEST_DEPS=$(mktemp)
+
+          run_analysis() {
+            local target_commit=$1
+            local plugins_file=$2
+            local test_deps_file=$3
+
+            git checkout -q "$target_commit"
+
+            mvn dependency:resolve-plugins > "$MVN_OUTPUT" 2>&1 || true
+            awk '
+              /The following plugins have been resolved:/ { flag=1; next }
+              flag && /----------/ { flag=0 }
+              flag {
+                clean_line = $0
+                sub(/^[[:space:]]*(\[INFO\])?[[:space:]]*/, "", clean_line)
+                sub(/[[:space:]\r]+$/, "", clean_line)
+                print clean_line
+              }
+            ' "$MVN_OUTPUT" | sort -u > "$plugins_file"
+
+            mvn dependency:resolve > "$MVN_OUTPUT" 2>&1 || true
+            awk '
+              /The following files have been resolved:/ { flag=1; next }
+              flag && /----------/ { flag=0 }
+              flag {
+                clean_line = $0
+                sub(/^[[:space:]]*(\[INFO\])?[[:space:]]*/, "", clean_line)
+                sub(/[[:space:]\r]+$/, "", clean_line)
+                if (clean_line ~ /:test([[:space:]]|$)/) {
+                  sub(/[[:space:]]*--[[:space:]]*module.*$/, "", clean_line)
+                  print clean_line
+                }
+              }
+            ' "$MVN_OUTPUT" | sort -u > "$test_deps_file"
+          }
+
+          run_analysis "$COMMIT_HASH"    "$AFTER_PLUGINS"  "$AFTER_TEST_DEPS"
+          run_analysis "${COMMIT_HASH}^" "$BEFORE_PLUGINS" "$BEFORE_TEST_DEPS"
+
+          git checkout -q "$ORIGINAL_REF"
+
+          PLUGINS_CHANGED=false
+          TEST_DEPS_CHANGED=false
+          diff "$BEFORE_PLUGINS"   "$AFTER_PLUGINS"   > /dev/null 2>&1 || PLUGINS_CHANGED=true
+          diff "$BEFORE_TEST_DEPS" "$AFTER_TEST_DEPS" > /dev/null 2>&1 || TEST_DEPS_CHANGED=true
+
+          if [ "$PLUGINS_CHANGED" = "false" ] && [ "$TEST_DEPS_CHANGED" = "false" ]; then
+            echo "BREAK: pom.xml changed but neither plugins nor test-deps were updated."
+            exit 1
+          fi
+
+          [ "$PLUGINS_CHANGED"   = "true" ] && echo "Plugin changes detected."
+          [ "$TEST_DEPS_CHANGED" = "true" ] && echo "Test-dependency changes detected."
+          exit 0
+          SCRIPT_EOF
+
+          # ── Evaluate each commit since the last release tag ───────────────────
+          echo "## Maven Release Check" >> "$GITHUB_STEP_SUMMARY"
+
+          LATEST_TAG=$(git describe --tags --match "${RELEASE_PREFIX}*" --abbrev=0 2>/dev/null || echo "")
+
+          if [ -z "$LATEST_TAG" ]; then
+            echo "**No release tag found** — treating as needing a release." >> "$GITHUB_STEP_SUMMARY"
+            echo "should-release=true"  >> "$GITHUB_OUTPUT"
+            echo "dispatched=false"     >> "$GITHUB_OUTPUT"
+            echo "status-text=no release tag found; assuming release is needed" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "**Latest release tag:** \`${LATEST_TAG}\`" >> "$GITHUB_STEP_SUMMARY"
+
+          RELEASE_HASH=$(git rev-list -n 1 "${LATEST_TAG}")
+          COMMITS=$(git log --format="%H" "${RELEASE_HASH}..HEAD")
+
+          if [ -z "$COMMITS" ]; then
+            echo "**No commits since \`${LATEST_TAG}\`** — nothing to release." >> "$GITHUB_STEP_SUMMARY"
+            echo "should-release=false" >> "$GITHUB_OUTPUT"
+            echo "dispatched=false"     >> "$GITHUB_OUTPUT"
+            echo "status-text=no commits since ${LATEST_TAG}" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          COMMIT_COUNT=$(echo "$COMMITS" | wc -l | xargs)
+          echo "**Commits since \`${LATEST_TAG}\`:** ${COMMIT_COUNT}" >> "$GITHUB_STEP_SUMMARY"
+          echo ""                                  >> "$GITHUB_STEP_SUMMARY"
+          echo "| Commit | Decision | Reason |"   >> "$GITHUB_STEP_SUMMARY"
+          echo "|--------|----------|--------|"   >> "$GITHUB_STEP_SUMMARY"
+
+          ALL_SKIP=true
+
+          while IFS= read -r COMMIT; do
+            SHORT="${COMMIT:0:8}"
+            MSG=$(git show -s --format=%B "$COMMIT")
+            MSG_FIRST=$(echo "$MSG" | head -1)
+            AUTHOR=$(git show -s --format=%aN "$COMMIT")
+            CHANGED_FILES=$(git diff --name-only "${COMMIT}^" "$COMMIT" 2>/dev/null || true)
+
+            # 1. ci-skip marker in commit message
+            if echo "$MSG" | grep -qiE '\[ci[ -]skip\]|\[skip[ -]ci\]|\[no[ -]ci\]|\[skip actions\]|\[actions skip\]|skip-checks:[ ]?true'; then
+              echo "| \`${SHORT}\` | ⏭️ Skip | ci-skip in message |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+
+            # 2. Documentation / README-only change
+            README_ONLY=true
+            while IFS= read -r FILE; do
+              [ -z "$FILE" ] && continue
+              if ! echo "$FILE" | grep -qiE '(^|/)readme[^/]*$|\.(md|txt|rst|adoc)$|(^|/)docs/'; then
+                README_ONLY=false
+                break
+              fi
+            done <<< "$CHANGED_FILES"
+
+            if [ "$README_ONLY" = "true" ]; then
+              echo "| \`${SHORT}\` | ⏭️ Skip | docs/readme only |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+
+            # 3. Test-source-only change (src/test/** in any submodule)
+            TEST_SRC_ONLY=true
+            while IFS= read -r FILE; do
+              [ -z "$FILE" ] && continue
+              if ! echo "$FILE" | grep -qE '(^|/)src/test/'; then
+                TEST_SRC_ONLY=false
+                break
+              fi
+            done <<< "$CHANGED_FILES"
+
+            if [ "$TEST_SRC_ONLY" = "true" ]; then
+              echo "| \`${SHORT}\` | ⏭️ Skip | src/test only |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+
+            # 4. Dependabot plugin or test-dependency update
+            if [ "$AUTHOR" = "dependabot[bot]" ]; then
+              if bash "$CHECK_DEPENDABOT" "$COMMIT" > /dev/null 2>&1; then
+                echo "| \`${SHORT}\` | ⏭️ Skip | dependabot plugin/test-dep update |" >> "$GITHUB_STEP_SUMMARY"
+                continue
+              fi
+            fi
+
+            # Not skip-worthy
+            echo "| \`${SHORT}\` | 🚀 Release | ${MSG_FIRST} (${AUTHOR}) |" >> "$GITHUB_STEP_SUMMARY"
+            ALL_SKIP=false
+          done <<< "$COMMITS"
+
+          echo "" >> "$GITHUB_STEP_SUMMARY"
+
+          if [ "$ALL_SKIP" = "true" ]; then
+            echo "**Decision: ⏭️ All commits are skip-worthy — no release triggered.**" >> "$GITHUB_STEP_SUMMARY"
+            echo "should-release=false" >> "$GITHUB_OUTPUT"
+            echo "dispatched=false"     >> "$GITHUB_OUTPUT"
+            echo "status-text=all commits since ${LATEST_TAG} are skip-worthy (docs, ci-skip, or dependabot test/plugin)" >> "$GITHUB_OUTPUT"
+            exit 0
+          fi
+
+          echo "**Decision: 🚀 Release-worthy commits found.**" >> "$GITHUB_STEP_SUMMARY"
+          echo "should-release=true" >> "$GITHUB_OUTPUT"
+
+          if [ "$TRIGGER_RELEASE" = "true" ]; then
+            gh workflow run "${WORKFLOW}" --repo "${REPO}" --ref "${TARGET_REF}"
+            echo "Dispatched \`${WORKFLOW}\` on \`${TARGET_REF}\`." >> "$GITHUB_STEP_SUMMARY"
+            echo "dispatched=true" >> "$GITHUB_OUTPUT"
+            echo "status-text=dispatched ${WORKFLOW} on ${TARGET_REF} — release-worthy commits found since ${LATEST_TAG}" >> "$GITHUB_OUTPUT"
+          else
+            echo "dispatched=false" >> "$GITHUB_OUTPUT"
+            echo "status-text=release-worthy commits found since ${LATEST_TAG} (trigger-release=false; not dispatched)" >> "$GITHUB_OUTPUT"
+          fi
+
+  post-to-slack-if-triggered:
+    needs: check-maven-commits
+    if: success() && needs.check-maven-commits.outputs.dispatched == 'true' && inputs.channel-id != 'NO_ID'
+    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: "🔵 ${{ github.repository }} - Triggered ${{ inputs.workflow }} on ${{ inputs.target-ref }} (${{ needs.check-maven-commits.outputs.status-text }})"
+    secrets: inherit
+
+  post-to-slack-if-skipped:
+    needs: check-maven-commits
+    if: success() && needs.check-maven-commits.outputs.should-release == 'false' && inputs.channel-id != 'NO_ID'
+    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: "⏭️ ${{ github.repository }} - Release skipped: ${{ needs.check-maven-commits.outputs.status-text }}"
+    secrets: inherit
+
+  post-fail-to-slack-if-fail:
+    needs: check-maven-commits
+    if: failure() && inputs.channel-id != 'NO_ID'
+    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: "⚫ ${{ github.repository }} - Maven release check failed for ${{ inputs.workflow }}"
+    secrets: inherit
