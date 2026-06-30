@@ -1,11 +1,11 @@
-name: Maybe release bot updates - Maven
-# Delegates commit evaluation to the check-should-release-maven action and
+name: Maybe release bot updates - Gradle
+# Delegates commit evaluation to the can-release-be-skipped-gradle action and
 # optionally dispatches the target workflow when a release is warranted.
 on:
   workflow_call:
     inputs:
       workflow:
-        description: "Workflow filename to dispatch when a release is warranted (e.g. maven-release.yml)."
+        description: "Workflow filename to dispatch when a release is warranted (e.g. gradle-release.yml)."
         required: true
         type: string
       release-branch:
@@ -29,7 +29,7 @@ on:
         type: string
         default: "dependabot[bot]"
       ignore-plugin-update-commits:
-        description: "Treat bot commits that only update Maven plugins as skip-worthy."
+        description: "Treat bot commits that only update Gradle plugins as skip-worthy."
         required: false
         type: boolean
         default: true
@@ -39,7 +39,7 @@ on:
         type: boolean
         default: true
       java-version:
-        description: "Java version used for Maven dependency/plugin analysis."
+        description: "Java version used when running Gradle analysis."
         required: false
         type: string
         default: "25"
@@ -51,16 +51,16 @@ on:
     outputs:
       should-release:
         description: "true when a release is warranted."
-        value: ${{ jobs.check-maven-commits.outputs.should-release }}
+        value: ${{ jobs.check-gradle-commits.outputs.should-release }}
       dispatched:
         description: "true when the target workflow was dispatched."
-        value: ${{ jobs.check-maven-commits.outputs.dispatched }}
+        value: ${{ jobs.check-gradle-commits.outputs.dispatched }}
       status-text:
         description: "Human-readable summary of the decision."
-        value: ${{ jobs.check-maven-commits.outputs.status-text }}
+        value: ${{ jobs.check-gradle-commits.outputs.status-text }}
 
 jobs:
-  check-maven-commits:
+  check-gradle-commits:
     runs-on: ubuntu-24.04
     permissions:
       contents: read
@@ -82,17 +82,12 @@ jobs:
           java-version: ${{ inputs.java-version }}
           distribution: liberica
 
-      - name: Cache Maven repository
-        uses: actions/cache@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
 
       - name: Check if release can be skipped
         id: check
-        uses: ./.github/actions/can-release-be-skipped-maven
+        uses: ./.github/actions/can-release-be-skipped-gradle
         with:
           release-branch: ${{ inputs.release-branch }}
           release-prefix: ${{ inputs.release-prefix }}
@@ -126,28 +121,28 @@ jobs:
           echo "status-text=$REASON" >> "$GITHUB_OUTPUT"
 
   post-to-slack-if-triggered:
-    needs: check-maven-commits
-    if: success() && needs.check-maven-commits.outputs.dispatched == 'true' && inputs.channel-id != 'NO_ID'
+    needs: check-gradle-commits
+    if: success() && needs.check-gradle-commits.outputs.dispatched == 'true' && inputs.channel-id != 'NO_ID'
     uses: entur/gha-slack/.github/workflows/post.yml@v2
     with:
       channel_id: ${{ inputs.channel-id }}
-      message: "🔵 ${{ github.repository }} - Triggered ${{ inputs.workflow }} on ${{ inputs.release-branch }} (${{ needs.check-maven-commits.outputs.status-text }})"
+      message: "🔵 ${{ github.repository }} - Triggered ${{ inputs.workflow }} on ${{ inputs.release-branch }} (${{ needs.check-gradle-commits.outputs.status-text }})"
     secrets: inherit
 
   post-to-slack-if-skipped:
-    needs: check-maven-commits
-    if: success() && needs.check-maven-commits.outputs.should-release == 'false' && inputs.channel-id != 'NO_ID'
+    needs: check-gradle-commits
+    if: success() && needs.check-gradle-commits.outputs.should-release == 'false' && inputs.channel-id != 'NO_ID'
     uses: entur/gha-slack/.github/workflows/post.yml@v2
     with:
       channel_id: ${{ inputs.channel-id }}
-      message: "⏭️ ${{ github.repository }} - Release skipped: ${{ needs.check-maven-commits.outputs.status-text }}"
+      message: "⏭️ ${{ github.repository }} - Release skipped: ${{ needs.check-gradle-commits.outputs.status-text }}"
     secrets: inherit
 
   post-fail-to-slack-if-fail:
-    needs: check-maven-commits
+    needs: check-gradle-commits
     if: failure() && inputs.channel-id != 'NO_ID'
     uses: entur/gha-slack/.github/workflows/post.yml@v2
     with:
       channel_id: ${{ inputs.channel-id }}
-      message: "⚫ ${{ github.repository }} - Maven release check failed for ${{ inputs.workflow }}"
+      message: "⚫ ${{ github.repository }} - Gradle release check failed for ${{ inputs.workflow }}"
     secrets: inherit
