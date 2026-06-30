@@ -1,3 +1,28 @@
+# CD pipeline for one environment: terraform plan -> apply -> helm deploy.
+#
+# Concurrency model (scoped per environment + repository):
+#   - tf-plan:  cancel-in-progress=true  -> read-only (runs with -lock=false),
+#               so a newer push may freely cancel an in-flight plan.
+#   - tf-apply: cancel-in-progress=false in its OWN group.
+#   - deploy:   cancel-in-progress=false in its OWN group (distinct from apply).
+#
+# Why apply and deploy use SEPARATE groups: a job waiting at an environment
+# approval gate counts as "pending", and GitHub keeps only one pending member
+# per group ("previously pending job ... canceled"). If apply and deploy shared
+# one group, the deploy job's claim on that group would cancel tf-apply the
+# instant it paused for approval. Separate groups remove that self-cancel.
+#
+# Accepted trade-off ("latest approved commit wins"): apply and deploy are NOT
+# strictly atomic across runs. apply.yml (gha-terraform) and deploy.yml
+# (gha-helm) each carry their own environment approval gate, so there is always
+# a cancellable "waiting for approval" window between a finished apply and the
+# deploy. If an older run sits at the deploy gate while a newer run is approved
+# all the way through its own apply, the newer run's deploy supersedes (cancels)
+# the older one's -- the older run may then have applied infra without deploying,
+# which the newer run's deploy corrects. Strict atomicity would require a single
+# approval gate (i.e. an ungated deploy); see the unused terraform-plan.yml /
+# terraform-apply.yml helpers for that alternative.
+
 name: CD
 
 on:
@@ -78,6 +103,11 @@ jobs:
 
   tf-plan:
     name: Terraform Plan
+    # Plan is read-only (runs with -lock=false), so a newer push may freely
+    # cancel an in-progress plan from an older commit.
+    concurrency:
+      group: cd-tf-plan-${{ inputs.environment }}-${{ github.repository }}
+      cancel-in-progress: true
     uses: entur/gha-terraform/.github/workflows/plan.yml@v2
     with:
       environment: ${{ inputs.environment }}
@@ -86,8 +116,9 @@ jobs:
   tf-apply:
     name: Terraform Apply
     needs: [tf-plan]
+    # Own group, distinct from deploy below (see concurrency note at top of file).
     concurrency:
-      group: cd-deploy-${{ inputs.environment }}-${{ github.repository }}
+      group: cd-tf-apply-${{ inputs.environment }}-${{ github.repository }}
       cancel-in-progress: false
     uses: entur/gha-terraform/.github/workflows/apply.yml@v2
     with:
@@ -100,8 +131,10 @@ jobs:
     needs: [tf-apply]
     # Terraform apply is skipped on empty plan. This if ensures that job is run even if previous step is skipped
     if: always() && !cancelled() && !contains(needs.*.result, 'failure')
+    # Own group, distinct from tf-apply (see concurrency note at top of file).
+    # Serializes deploys for the same environment across runs.
     concurrency:
-      group: cd-deploy-${{ inputs.environment }}-${{ github.repository }}
+      group: cd-helm-deploy-${{ inputs.environment }}-${{ github.repository }}
       cancel-in-progress: false
     uses: entur/gha-helm/.github/workflows/deploy.yml@v1
     with:
