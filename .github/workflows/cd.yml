@@ -6,22 +6,51 @@
 #   - tf-apply: cancel-in-progress=false in its OWN group.
 #   - deploy:   cancel-in-progress=false in its OWN group (distinct from apply).
 #
-# Why apply and deploy use SEPARATE groups: a job waiting at an environment
-# approval gate counts as "pending", and GitHub keeps only one pending member
-# per group ("previously pending job ... canceled"). If apply and deploy shared
-# one group, the deploy job's claim on that group would cancel tf-apply the
-# instant it paused for approval. Separate groups remove that self-cancel.
+# Why plan, apply and deploy use SEPARATE groups: a job waiting at an
+# environment approval gate HOLDS its concurrency group until it is approved
+# or cancelled (see the superseding note below). A group is held per JOB, so
+# with a shared group it would be released between apply and deploy, letting
+# jobs of DIFFERENT runs compete for it (an older run's deploy vs a newer
+# run's apply). A run parked at any gate would then block every job of a
+# newer run -- including the read-only plan -- and GitHub's
+# one-pending-per-group dedup ("previously pending job ... canceled") would
+# cancel other runs' jobs mid-pipeline. With separate groups a newer run
+# always progresses to its own approval gates, and each group only ever
+# serializes the same job type across runs.
 #
 # Accepted trade-off ("latest approved commit wins"): apply and deploy are NOT
 # strictly atomic across runs. apply.yml (gha-terraform) and deploy.yml
 # (gha-helm) each carry their own environment approval gate, so there is always
 # a cancellable "waiting for approval" window between a finished apply and the
-# deploy. If an older run sits at the deploy gate while a newer run is approved
-# all the way through its own apply, the newer run's deploy supersedes (cancels)
-# the older one's -- the older run may then have applied infra without deploying,
-# which the newer run's deploy corrects. Strict atomicity would require a single
-# approval gate (i.e. an ungated deploy); see the unused terraform-plan.yml /
-# terraform-apply.yml helpers for that alternative.
+# deploy. An older run parked at the deploy gate is superseded -- cancelled by
+# a newer run's cancel-superseded sweep, or by hand -- and may thus have
+# applied infra without deploying it; the newer run's deploy corrects that.
+# Strict atomicity would require a single approval gate (i.e. an ungated
+# deploy); see the unused terraform-plan.yml / terraform-apply.yml helpers for
+# that alternative.
+#
+# Superseding ("newest run wins", the cancel-superseded job): concurrency alone
+# cannot clear a run parked at an approval gate. A gate-waiting job HOLDS its
+# concurrency group (run status "waiting"), and with cancel-in-progress=false
+# GitHub only dedupes the pending queue behind it -- so newer runs stack up as
+# "pending" until someone manually approves or cancels the old run.
+# cancel-in-progress=true is no fix either: it cannot tell "waiting at the
+# gate" (safe to cancel) from "terraform apply is executing" (must not be
+# interrupted). So the cancel-superseded job, run at the start of every cd.yml
+# call, explicitly cancels OLDER runs of the same caller workflow + branch
+# whose run status is "waiting" or "pending" -- states in which no job is
+# executing, i.e. exactly the runs a human would cancel by hand. A run that is
+# actively applying/deploying is never touched; the concurrency groups still
+# serialize those.
+#
+# Accepted gap: the sweep is a point-in-time check, so it misses a run that
+# enters "waiting" AFTER the sweep ran (e.g. an older run whose apply was
+# executing during the sweep and then parked at its deploy gate). Such a run
+# holds its group until the next push sweeps it away, or until someone
+# approves/cancels it manually -- rare, since it requires the older run to be
+# actively approved while the newer one is mid-stage. NOTE: the sweep requires
+# the CALLER to grant `actions: write` on the jobs that call cd.yml, otherwise
+# it logs a warning and does nothing.
 
 name: CD
 
@@ -100,6 +129,33 @@ jobs:
       channel_id: ${{ inputs.channel-id }}
       message: "📋 New <${{ needs.git-diff-url.outputs.compare_url }}|changelog> for ${{ github.event.repository.name }} ${{ needs.git-diff-url.outputs.short_sha }} in ${{ inputs.environment }}"
     secrets: inherit
+
+  cancel-superseded:
+    name: Cancel Superseded Runs
+    runs-on: ubuntu-latest
+    steps:
+      - name: Cancel older runs stuck at approval gates
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        # Cancels older runs of the same caller workflow + branch whose run
+        # status is "waiting" (parked at an environment approval gate) or
+        # "pending" (queued behind a concurrency group). In both states no
+        # job is executing, so cancelling is safe. Never fails the pipeline:
+        # without `actions: write` from the caller it only logs a warning.
+        run: |
+          WORKFLOW_ID=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}" --jq .workflow_id) || {
+            echo "::warning::Could not resolve workflow id; skipping supersede sweep"
+            exit 0
+          }
+          for STATUS in waiting pending; do
+            gh api "repos/${{ github.repository }}/actions/workflows/${WORKFLOW_ID}/runs?branch=${{ github.ref_name }}&status=${STATUS}&per_page=100" \
+              --jq ".workflow_runs[] | select(.run_number < ${{ github.run_number }}) | .id" || true
+          done | sort -u | while read -r RUN_ID; do
+            [ -z "$RUN_ID" ] && continue
+            echo "Cancelling superseded run ${RUN_ID} (superseded by run #${{ github.run_number }})"
+            gh api -X POST "repos/${{ github.repository }}/actions/runs/${RUN_ID}/cancel" \
+              || echo "::warning::Could not cancel run ${RUN_ID} -- does the caller grant 'actions: write'?"
+          done
 
   tf-plan:
     name: Terraform Plan
