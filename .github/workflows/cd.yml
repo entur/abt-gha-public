@@ -1,47 +1,24 @@
 # CD pipeline for one environment: terraform plan -> [approval] -> apply -> deploy.
 #
-# Approval gate (opt-in via the require-approval input):
-#   When require-approval is true, a standalone `approve` job pauses the
-#   pipeline on a GitHub Environment named "approval" (which the caller repo
-#   must create, with required reviewers) immediately after the plan -- so a
-#   reviewer can read the plan before anything is applied or deployed. Putting
-#   the gate in its OWN job, instead of relying on required reviewers on the
-#   tst/prd environments, buys two things:
-#     - one gate covers BOTH terraform apply and the helm deploy, so there is
-#       no more double approval, and
-#     - the wait happens in a job that does nothing else and holds no
-#       concurrency group, so a waiting run never blocks a newer run (see the
-#       approve concurrency note below).
-#   Callers that opt in should move required reviewers OFF the tst/prd
-#   environments and ONTO "approval"; otherwise apply/deploy gate a second time.
-#   When require-approval is false (the default) the job is skipped and the
-#   pipeline flows straight through -- unchanged for existing callers.
+# Approval gate (opt-in via require-approval, default false): a standalone
+# `approve` job pauses after the plan on a per-environment "approval-<env>"
+# GitHub Environment (e.g. approval-prd) whose required reviewers gate the run,
+# so the target is clear in the approval dialog and notifications. One gate
+# covers both apply and deploy -- move required reviewers OFF tst/prd and ONTO
+# the matching approval-<env> so they don't gate twice. When false the job is
+# skipped and the pipeline flows straight through.
 #
-# Concurrency model (every group scoped per environment + repository):
-#   - tf-plan:  cancel-in-progress=true. The plan is read-only (runs with
-#               -lock=false), so a newer push may freely cancel an in-flight
-#               plan from an older commit.
-#   - approve:  no concurrency group at all. The gate is a standalone job that
-#               only waits, so several runs may sit at it at once -- none
-#               cancels another, and because the job holds no group, none blocks
-#               a newer run's plan, apply or deploy either. So a newer commit
-#               always flows to its OWN gate and can be approved and deployed
-#               regardless of older runs still parked at the gate -- the acute
-#               problem this pipeline sets out to solve. Nothing is
-#               auto-superseded, though: approve the NEWEST waiting run and
-#               decline/cancel the older ones by hand (approving an older run
-#               would deploy an older image). This is also why the pipeline no
-#               longer needs the old pending_deployments "cancel-superseded"
-#               sweep or the caller's `actions: write`.
-#   - tf-apply: cancel-in-progress=false, in its own group. Serializes applies
-#               across runs; an apply that has started is never interrupted.
-#   - deploy:   cancel-in-progress=false, in its own group (distinct from
-#               apply). Serializes deploys across runs.
-#
-# Accepted trade-off ("latest approved commit wins"): apply and deploy are not
-# strictly atomic across runs. Once approved, a run may finish its apply and
-# then lose the deploy group to another approved run; the newest approved
-# deploy wins, which is the intended outcome.
+# Concurrency (per environment + repository):
+#   - tf-plan:  cancel-in-progress=true -- read-only, so a newer push may cancel
+#               an in-flight plan.
+#   - approve:  no group -- it only waits, so runs may queue here without
+#               cancelling or blocking each other or newer runs. Nothing is
+#               auto-superseded: approve the NEWEST and cancel older ones by hand
+#               (approving an older run deploys an older image).
+#   - tf-apply / deploy: cancel-in-progress=false in separate groups -- these
+#               serialize across runs and a started apply/deploy is never
+#               interrupted. Not atomic across runs; the newest approved deploy
+#               wins.
 
 name: CD
 
@@ -73,9 +50,10 @@ on:
       require-approval:
         description: >
           Require manual approval before apply/deploy. When true, a standalone
-          job pauses the pipeline on a GitHub Environment named "approval"
-          (which must exist with required reviewers) right after the plan.
-          A single gate then covers both terraform apply and the helm deploy.
+          job pauses the pipeline on a per-environment GitHub Environment named
+          "approval-<environment>" (e.g. approval-prd; must exist with required
+          reviewers) right after the plan, so the approval dialog names the exact
+          target. A single gate then covers both terraform apply and helm deploy.
         required: false
         type: boolean
         default: false
@@ -143,19 +121,20 @@ jobs:
     secrets: inherit
 
   approve:
-    name: Approve ${{ inputs.environment }}
+    name: Approve deploy to ${{ inputs.environment }}
     needs: [tf-plan]
     # Opt-in gate. When require-approval is false this job is skipped and every
     # downstream `if` below treats 'skipped' as "proceed".
     if: ${{ inputs.require-approval }}
     runs-on: ubuntu-latest
-    # Pauses on the "approval" GitHub Environment (required reviewers live
-    # there). No concurrency group: the job only waits and holds nothing, so
-    # several runs may sit at the gate at once without cancelling or blocking
-    # each other or a newer run's apply/deploy. Nothing is auto-cancelled --
-    # approve the newest waiting run and decline/cancel older ones (see
-    # concurrency note at top of file).
-    environment: approval
+    # Pauses on a per-environment "approval-<env>" GitHub Environment (e.g.
+    # approval-prd), so the target is unambiguous in the approval dialog and in
+    # review notifications. Required reviewers live on that environment. No
+    # concurrency group: the job only waits and holds nothing, so several runs
+    # may sit at the gate at once without cancelling or blocking each other or a
+    # newer run's apply/deploy. Nothing is auto-cancelled -- approve the newest
+    # waiting run and decline/cancel older ones (see concurrency note at top).
+    environment: approval-${{ inputs.environment }}
     steps:
       - name: Approved
         run: echo "Deployment of ${{ inputs.image }} to ${{ inputs.environment }} approved"
