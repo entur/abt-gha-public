@@ -1,25 +1,6 @@
-# CD pipeline for one environment: terraform plan -> [approval] -> apply -> deploy.
-#
-# Approval gate (opt-in via require-approval, default false): a standalone
-# `approve` job pauses after the plan on a single "approval" GitHub Environment
-# whose required reviewers gate the run. One gate covers both apply and deploy
-# -- move required reviewers OFF tst/prd and ONTO "approval" so they don't gate
-# twice. Which environment is being approved is conveyed by the notify-diff
-# Slack message and the "Approve deploy to <env>" job name, not by the
-# environment name. When false the job is skipped and the pipeline flows
-# straight through.
-#
-# Concurrency (per environment + repository):
-#   - tf-plan:  cancel-in-progress=true -- read-only, so a newer push may cancel
-#               an in-flight plan.
-#   - approve:  no group -- it only waits, so runs may queue here without
-#               cancelling or blocking each other or newer runs. Nothing is
-#               auto-superseded: approve the NEWEST and cancel older ones by hand
-#               (approving an older run deploys an older image).
-#   - tf-apply / deploy: cancel-in-progress=false in separate groups -- these
-#               serialize across runs and a started apply/deploy is never
-#               interrupted. Not atomic across runs; the newest approved deploy
-#               wins.
+# CD for one environment: terraform plan -> [approval] -> apply -> deploy.
+# Approval is opt-in (require-approval) and gates on an "approval" Environment;
+# its reviewers must NOT also be on tst/prd, or apply and deploy gate twice.
 
 name: CD
 
@@ -49,12 +30,7 @@ on:
         type: boolean
         default: true
       require-approval:
-        description: >
-          Require manual approval before apply/deploy. When true, a standalone
-          job pauses the pipeline on a GitHub Environment named "approval" (must
-          exist with required reviewers) right after the plan. A single gate then
-          covers both terraform apply and helm deploy; the target environment is
-          shown by the Slack notification and the job name.
+        description: Require manual approval on the "approval" Environment before apply/deploy
         required: false
         type: boolean
         default: false
@@ -102,7 +78,6 @@ jobs:
           echo "compare_url=$URL" >> "$GITHUB_OUTPUT"
           echo "$URL"
 
-          # Per-environment emoji (falls back to :clipboard: for unknown envs).
           case "$ENVIRONMENT" in
             prd) EMOJI=":prod:" ;;
             tst) EMOJI=":staging:" ;;
@@ -111,7 +86,6 @@ jobs:
           esac
 
           MESSAGE="$EMOJI New <$URL|changelog> for $REPO_NAME ${GITHUB_SHA::7}."
-          # Add the approve link only when this run actually gates for approval.
           if [ "$REQUIRE_APPROVAL" = "true" ]; then
             MESSAGE="$MESSAGE <$RUN_URL|Approve deployment>"
           fi
@@ -119,8 +93,6 @@ jobs:
 
   tf-plan:
     name: Terraform Plan
-    # Plan is read-only (runs with -lock=false), so a newer push may freely
-    # cancel an in-progress plan from an older commit.
     concurrency:
       group: cd-tf-plan-${{ inputs.environment }}-${{ github.repository }}
       cancel-in-progress: true
@@ -129,10 +101,7 @@ jobs:
       environment: ${{ inputs.environment }}
     secrets: inherit
 
-  # Posted right before the approval gate (needs tf-plan) so the changelog and
-  # the "Approve deployment" link land in Slack exactly when a reviewer is
-  # needed. The message -- env emoji, and the approve link when require-approval
-  # is set -- is built in the git-diff-url job.
+  # needs tf-plan so the changelog + approve link post right before the gate.
   notify-diff:
     name: Notify Git Diff
     needs: [git-diff-url, tf-plan]
@@ -144,23 +113,11 @@ jobs:
     secrets: inherit
 
   approve:
-    name: Approve deploy to ${{ inputs.environment }}
-    # Waits for notify-diff so the "Approve deployment" Slack message is posted
-    # right before the gate opens. Still runs when notify-diff is skipped (no
-    # changelog / notify-changelog off) or fails, hence the status-function
-    # guard rather than a plain input check.
+    name: Approve deployment
     needs: [tf-plan, notify-diff]
-    # Opt-in gate. When require-approval is false this job is skipped and every
-    # downstream `if` below treats 'skipped' as "proceed".
+    # !cancelled() so this still runs when notify-diff is skipped.
     if: ${{ !cancelled() && inputs.require-approval && needs.tf-plan.result == 'success' }}
     runs-on: ubuntu-latest
-    # Pauses on a single "approval" GitHub Environment where the required
-    # reviewers live; the target env is conveyed by the Slack message and this
-    # job's name, not the environment name. No concurrency group: the job only
-    # waits and holds nothing, so several runs may sit at the gate at once
-    # without cancelling or blocking each other or a newer run's apply/deploy.
-    # Nothing is auto-cancelled -- approve the newest waiting run and
-    # decline/cancel older ones (see concurrency note at top).
     environment: approval
     steps:
       - name: Approved
@@ -169,14 +126,10 @@ jobs:
   tf-apply:
     name: Terraform Apply
     needs: [tf-plan, approve]
-    # Run once the plan succeeded and approval passed (or was not required, i.e.
-    # the approve job was skipped). A declined or superseded approval leaves
-    # approve in 'failure'/'cancelled', which stops the pipeline here.
     if: >
       always() && !cancelled()
       && needs.tf-plan.result == 'success'
       && (needs.approve.result == 'success' || needs.approve.result == 'skipped')
-    # Own group, distinct from deploy below (see concurrency note at top of file).
     concurrency:
       group: cd-tf-apply-${{ inputs.environment }}-${{ github.repository }}
       cancel-in-progress: false
@@ -189,15 +142,11 @@ jobs:
   deploy:
     name: Deploy
     needs: [tf-apply, approve]
-    # Terraform apply is skipped on an empty plan, so tolerate a skipped apply.
-    # Proceed only if approval passed (or was not required) and nothing failed.
     if: >
       always() && !cancelled()
       && !contains(needs.*.result, 'failure')
       && (needs.approve.result == 'success' || needs.approve.result == 'skipped')
       && (needs.tf-apply.result == 'success' || needs.tf-apply.result == 'skipped')
-    # Own group, distinct from tf-apply (see concurrency note at top of file).
-    # Serializes deploys for the same environment across runs.
     concurrency:
       group: cd-helm-deploy-${{ inputs.environment }}-${{ github.repository }}
       cancel-in-progress: false
