@@ -9,8 +9,9 @@
 #   tst/prd environments, buys two things:
 #     - one gate covers BOTH terraform apply and the helm deploy, so there is
 #       no more double approval, and
-#     - the wait happens in a job that does nothing else, which is what makes
-#       superseding safe (see the approve concurrency note below).
+#     - the wait happens in a job that does nothing else and holds no
+#       concurrency group, so a waiting run never blocks a newer run (see the
+#       approve concurrency note below).
 #   Callers that opt in should move required reviewers OFF the tst/prd
 #   environments and ONTO "approval"; otherwise apply/deploy gate a second time.
 #   When require-approval is false (the default) the job is skipped and the
@@ -20,19 +21,18 @@
 #   - tf-plan:  cancel-in-progress=true. The plan is read-only (runs with
 #               -lock=false), so a newer push may freely cancel an in-flight
 #               plan from an older commit.
-#   - approve:  cancel-in-progress=true. This is what supersedes stale runs: a
-#               job parked at the approval gate can be cancelled safely because
-#               it only waits -- it mutates nothing. So when a newer run reaches
-#               the gate, GitHub-native concurrency cancels the older run still
-#               parked there, and that run's apply/deploy never fire. A newer
-#               run is therefore never blocked by an older one waiting for
-#               approval -- the whole problem this pipeline sets out to solve.
-#               (This replaces an earlier pending_deployments "cancel-superseded"
-#               sweep and its need for the caller to grant `actions: write`.)
-#               cancel-in-progress could NOT be used while the gate lived inside
-#               apply/deploy, because there it cannot tell "waiting at the gate"
-#               (safe to cancel) from "terraform apply is executing" (must not
-#               be interrupted). Isolating the gate removes that ambiguity.
+#   - approve:  no concurrency group at all. The gate is a standalone job that
+#               only waits, so several runs may sit at it at once -- none
+#               cancels another, and because the job holds no group, none blocks
+#               a newer run's plan, apply or deploy either. So a newer commit
+#               always flows to its OWN gate and can be approved and deployed
+#               regardless of older runs still parked at the gate -- the acute
+#               problem this pipeline sets out to solve. Nothing is
+#               auto-superseded, though: approve the NEWEST waiting run and
+#               decline/cancel the older ones by hand (approving an older run
+#               would deploy an older image). This is also why the pipeline no
+#               longer needs the old pending_deployments "cancel-superseded"
+#               sweep or the caller's `actions: write`.
 #   - tf-apply: cancel-in-progress=false, in its own group. Serializes applies
 #               across runs; an apply that has started is never interrupted.
 #   - deploy:   cancel-in-progress=false, in its own group (distinct from
@@ -150,12 +150,12 @@ jobs:
     if: ${{ inputs.require-approval }}
     runs-on: ubuntu-latest
     # Pauses on the "approval" GitHub Environment (required reviewers live
-    # there). This job does nothing but wait, so cancel-in-progress can safely
-    # supersede an older run still parked here (see concurrency note at top).
+    # there). No concurrency group: the job only waits and holds nothing, so
+    # several runs may sit at the gate at once without cancelling or blocking
+    # each other or a newer run's apply/deploy. Nothing is auto-cancelled --
+    # approve the newest waiting run and decline/cancel older ones (see
+    # concurrency note at top of file).
     environment: approval
-    concurrency:
-      group: cd-approve-${{ inputs.environment }}-${{ github.repository }}
-      cancel-in-progress: true
     steps:
       - name: Approved
         run: echo "Deployment of ${{ inputs.image }} to ${{ inputs.environment }} approved"
