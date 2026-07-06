@@ -1,63 +1,47 @@
-# CD pipeline for one environment: terraform plan -> apply -> helm deploy.
+# CD pipeline for one environment: terraform plan -> [approval] -> apply -> deploy.
 #
-# Concurrency model (scoped per environment + repository):
-#   - tf-plan:  cancel-in-progress=true  -> read-only (runs with -lock=false),
-#               so a newer push may freely cancel an in-flight plan.
-#   - tf-apply: cancel-in-progress=false in its OWN group.
-#   - deploy:   cancel-in-progress=false in its OWN group (distinct from apply).
+# Approval gate (opt-in via the require-approval input):
+#   When require-approval is true, a standalone `approve` job pauses the
+#   pipeline on a GitHub Environment named "approval" (which the caller repo
+#   must create, with required reviewers) immediately after the plan -- so a
+#   reviewer can read the plan before anything is applied or deployed. Putting
+#   the gate in its OWN job, instead of relying on required reviewers on the
+#   tst/prd environments, buys two things:
+#     - one gate covers BOTH terraform apply and the helm deploy, so there is
+#       no more double approval, and
+#     - the wait happens in a job that does nothing else, which is what makes
+#       superseding safe (see the approve concurrency note below).
+#   Callers that opt in should move required reviewers OFF the tst/prd
+#   environments and ONTO "approval"; otherwise apply/deploy gate a second time.
+#   When require-approval is false (the default) the job is skipped and the
+#   pipeline flows straight through -- unchanged for existing callers.
 #
-# Why plan, apply and deploy use SEPARATE groups: a job waiting at an
-# environment approval gate HOLDS its concurrency group until it is approved
-# or cancelled (see the superseding note below). A group is held per JOB, so
-# with a shared group it would be released between apply and deploy, letting
-# jobs of DIFFERENT runs compete for it (an older run's deploy vs a newer
-# run's apply). A run parked at any gate would then block every job of a
-# newer run -- including the read-only plan -- and GitHub's
-# one-pending-per-group dedup ("previously pending job ... canceled") would
-# cancel other runs' jobs mid-pipeline. With separate groups a newer run
-# always progresses to its own approval gates, and each group only ever
-# serializes the same job type across runs.
+# Concurrency model (every group scoped per environment + repository):
+#   - tf-plan:  cancel-in-progress=true. The plan is read-only (runs with
+#               -lock=false), so a newer push may freely cancel an in-flight
+#               plan from an older commit.
+#   - approve:  cancel-in-progress=true. This is what supersedes stale runs: a
+#               job parked at the approval gate can be cancelled safely because
+#               it only waits -- it mutates nothing. So when a newer run reaches
+#               the gate, GitHub-native concurrency cancels the older run still
+#               parked there, and that run's apply/deploy never fire. A newer
+#               run is therefore never blocked by an older one waiting for
+#               approval -- the whole problem this pipeline sets out to solve.
+#               (This replaces an earlier pending_deployments "cancel-superseded"
+#               sweep and its need for the caller to grant `actions: write`.)
+#               cancel-in-progress could NOT be used while the gate lived inside
+#               apply/deploy, because there it cannot tell "waiting at the gate"
+#               (safe to cancel) from "terraform apply is executing" (must not
+#               be interrupted). Isolating the gate removes that ambiguity.
+#   - tf-apply: cancel-in-progress=false, in its own group. Serializes applies
+#               across runs; an apply that has started is never interrupted.
+#   - deploy:   cancel-in-progress=false, in its own group (distinct from
+#               apply). Serializes deploys across runs.
 #
-# Accepted trade-off ("latest approved commit wins"): apply and deploy are NOT
-# strictly atomic across runs. apply.yml (gha-terraform) and deploy.yml
-# (gha-helm) each carry their own environment approval gate, so there is always
-# a cancellable "waiting for approval" window between a finished apply and the
-# deploy. An older run parked at the deploy gate is superseded -- cancelled by
-# a newer run's cancel-superseded sweep, or by hand -- and may thus have
-# applied infra without deploying it; the newer run's deploy corrects that.
-# Strict atomicity would require a single approval gate (i.e. an ungated
-# deploy); see the unused terraform-plan.yml / terraform-apply.yml helpers for
-# that alternative.
-#
-# Superseding ("newest run wins", the cancel-superseded job): concurrency alone
-# cannot clear a run parked at an approval gate. A gate-waiting job HOLDS its
-# concurrency group (run status "waiting"), and with cancel-in-progress=false
-# GitHub only dedupes the pending queue behind it -- so newer runs stack up as
-# "pending" until someone manually approves or cancels the old run.
-# cancel-in-progress=true is no fix either: it cannot tell "waiting at the
-# gate" (safe to cancel) from "terraform apply is executing" (must not be
-# interrupted). So the cancel-superseded job, run at the start of every cd.yml
-# call, cancels OLDER runs of the same caller workflow + branch that are
-# waiting for approval into THE SAME ENVIRONMENT as this call (resolved via
-# the pending_deployments API) -- exactly the run a human would cancel by hand
-# before approving the newest one. Runs waiting at OTHER environments' gates
-# are left alone; they are swept only when a newer run reaches that
-# environment (e.g. a run waiting at the prd gate survives until a newer run
-# has been approved all the way to its own prd stage). Runs that are merely
-# "pending" (queued behind a concurrency group) are also left alone: GitHub's
-# one-pending-per-group dedup already keeps only the newest queued run per
-# group, and the groups are per environment. A run that is actively
-# applying/deploying is never touched; the concurrency groups still serialize
-# those.
-#
-# Accepted gap: the sweep is a point-in-time check, so it misses a run that
-# enters "waiting" AFTER the sweep ran (e.g. an older run whose apply was
-# executing during the sweep and then parked at its deploy gate). Such a run
-# holds its group until the next run entering that environment sweeps it, or
-# until someone approves/cancels it manually -- rare, since it requires the
-# older run to be actively approved while the newer one is mid-stage. NOTE:
-# the sweep requires the CALLER to grant `actions: write` on the jobs that
-# call cd.yml, otherwise it logs a warning and does nothing.
+# Accepted trade-off ("latest approved commit wins"): apply and deploy are not
+# strictly atomic across runs. Once approved, a run may finish its apply and
+# then lose the deploy group to another approved run; the newest approved
+# deploy wins, which is the intended outcome.
 
 name: CD
 
@@ -86,6 +70,15 @@ on:
         required: false
         type: boolean
         default: true
+      require-approval:
+        description: >
+          Require manual approval before apply/deploy. When true, a standalone
+          job pauses the pipeline on a GitHub Environment named "approval"
+          (which must exist with required reviewers) right after the plan.
+          A single gate then covers both terraform apply and the helm deploy.
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   git-diff-url:
@@ -137,40 +130,6 @@ jobs:
       message: "📋 New <${{ needs.git-diff-url.outputs.compare_url }}|changelog> for ${{ github.event.repository.name }} ${{ needs.git-diff-url.outputs.short_sha }} in ${{ inputs.environment }}"
     secrets: inherit
 
-  cancel-superseded:
-    name: Cancel Superseded Runs
-    runs-on: ubuntu-latest
-    steps:
-      - name: Cancel older runs waiting at this environment's approval gate
-        env:
-          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
-        # Cancels older runs of the same caller workflow + branch that are
-        # waiting for approval into THIS call's environment (resolved via the
-        # pending_deployments API). Runs waiting at other environments' gates
-        # are left for the cd.yml call for that environment to sweep; runs
-        # queued "pending" behind a concurrency group are left to GitHub's
-        # native one-pending-per-group dedup. Never fails the pipeline:
-        # without `actions: write` from the caller it only logs a warning.
-        run: |
-          WORKFLOW_ID=$(gh api "repos/${{ github.repository }}/actions/runs/${{ github.run_id }}" --jq .workflow_id) || {
-            echo "::warning::Could not resolve workflow id; skipping supersede sweep"
-            exit 0
-          }
-          { gh api "repos/${{ github.repository }}/actions/workflows/${WORKFLOW_ID}/runs?branch=${{ github.ref_name }}&status=waiting&per_page=100" \
-              --jq ".workflow_runs[] | select(.run_number < ${{ github.run_number }}) | .id" || true
-          } | while read -r RUN_ID; do
-            [ -z "$RUN_ID" ] && continue
-            GATE_ENVS=$(gh api "repos/${{ github.repository }}/actions/runs/${RUN_ID}/pending_deployments" \
-              --jq '[.[].environment.name] | join(",")') || continue
-            if echo ",${GATE_ENVS}," | grep -q ",${{ inputs.environment }},"; then
-              echo "Cancelling run ${RUN_ID}: waiting for '${{ inputs.environment }}' approval, superseded by run #${{ github.run_number }}"
-              gh api -X POST "repos/${{ github.repository }}/actions/runs/${RUN_ID}/cancel" \
-                || echo "::warning::Could not cancel run ${RUN_ID} -- does the caller grant 'actions: write'?"
-            else
-              echo "Leaving run ${RUN_ID}: waiting for '${GATE_ENVS}', not '${{ inputs.environment }}'"
-            fi
-          done
-
   tf-plan:
     name: Terraform Plan
     # Plan is read-only (runs with -lock=false), so a newer push may freely
@@ -183,9 +142,34 @@ jobs:
       environment: ${{ inputs.environment }}
     secrets: inherit
 
+  approve:
+    name: Approve ${{ inputs.environment }}
+    needs: [tf-plan]
+    # Opt-in gate. When require-approval is false this job is skipped and every
+    # downstream `if` below treats 'skipped' as "proceed".
+    if: ${{ inputs.require-approval }}
+    runs-on: ubuntu-latest
+    # Pauses on the "approval" GitHub Environment (required reviewers live
+    # there). This job does nothing but wait, so cancel-in-progress can safely
+    # supersede an older run still parked here (see concurrency note at top).
+    environment: approval
+    concurrency:
+      group: cd-approve-${{ inputs.environment }}-${{ github.repository }}
+      cancel-in-progress: true
+    steps:
+      - name: Approved
+        run: echo "Deployment of ${{ inputs.image }} to ${{ inputs.environment }} approved"
+
   tf-apply:
     name: Terraform Apply
-    needs: [tf-plan]
+    needs: [tf-plan, approve]
+    # Run once the plan succeeded and approval passed (or was not required, i.e.
+    # the approve job was skipped). A declined or superseded approval leaves
+    # approve in 'failure'/'cancelled', which stops the pipeline here.
+    if: >
+      always() && !cancelled()
+      && needs.tf-plan.result == 'success'
+      && (needs.approve.result == 'success' || needs.approve.result == 'skipped')
     # Own group, distinct from deploy below (see concurrency note at top of file).
     concurrency:
       group: cd-tf-apply-${{ inputs.environment }}-${{ github.repository }}
@@ -198,9 +182,14 @@ jobs:
 
   deploy:
     name: Deploy
-    needs: [tf-apply]
-    # Terraform apply is skipped on empty plan. This if ensures that job is run even if previous step is skipped
-    if: always() && !cancelled() && !contains(needs.*.result, 'failure')
+    needs: [tf-apply, approve]
+    # Terraform apply is skipped on an empty plan, so tolerate a skipped apply.
+    # Proceed only if approval passed (or was not required) and nothing failed.
+    if: >
+      always() && !cancelled()
+      && !contains(needs.*.result, 'failure')
+      && (needs.approve.result == 'success' || needs.approve.result == 'skipped')
+      && (needs.tf-apply.result == 'success' || needs.tf-apply.result == 'skipped')
     # Own group, distinct from tf-apply (see concurrency note at top of file).
     # Serializes deploys for the same environment across runs.
     concurrency:
