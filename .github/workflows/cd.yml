@@ -1,12 +1,13 @@
 # CD pipeline for one environment: terraform plan -> [approval] -> apply -> deploy.
 #
 # Approval gate (opt-in via require-approval, default false): a standalone
-# `approve` job pauses after the plan on a per-environment "approval-<env>"
-# GitHub Environment (e.g. approval-prd) whose required reviewers gate the run,
-# so the target is clear in the approval dialog and notifications. One gate
-# covers both apply and deploy -- move required reviewers OFF tst/prd and ONTO
-# the matching approval-<env> so they don't gate twice. When false the job is
-# skipped and the pipeline flows straight through.
+# `approve` job pauses after the plan on a single "approval" GitHub Environment
+# whose required reviewers gate the run. One gate covers both apply and deploy
+# -- move required reviewers OFF tst/prd and ONTO "approval" so they don't gate
+# twice. Which environment is being approved is conveyed by the notify-diff
+# Slack message and the "Approve deploy to <env>" job name, not by the
+# environment name. When false the job is skipped and the pipeline flows
+# straight through.
 #
 # Concurrency (per environment + repository):
 #   - tf-plan:  cancel-in-progress=true -- read-only, so a newer push may cancel
@@ -50,10 +51,10 @@ on:
       require-approval:
         description: >
           Require manual approval before apply/deploy. When true, a standalone
-          job pauses the pipeline on a per-environment GitHub Environment named
-          "approval-<environment>" (e.g. approval-prd; must exist with required
-          reviewers) right after the plan, so the approval dialog names the exact
-          target. A single gate then covers both terraform apply and helm deploy.
+          job pauses the pipeline on a GitHub Environment named "approval" (must
+          exist with required reviewers) right after the plan. A single gate then
+          covers both terraform apply and helm deploy; the target environment is
+          shown by the Slack notification and the job name.
         required: false
         type: boolean
         default: false
@@ -66,17 +67,21 @@ jobs:
       deployments: read
     outputs:
       compare_url: ${{ steps.compare.outputs.compare_url }}
-      short_sha: ${{ steps.compare.outputs.short_sha }}
+      slack_message: ${{ steps.compare.outputs.slack_message }}
     steps:
-      - name: Get compare URL since last successful deployment
+      - name: Build changelog Slack message
         id: compare
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          REPO_NAME: ${{ github.event.repository.name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REQUIRE_APPROVAL: ${{ inputs.require-approval }}
         run: |
           DEPLOYED_SHA=$(
             gh api "repos/${{ github.repository }}/deployments" \
               -X GET \
-              -f environment="${{ inputs.environment }}" \
+              -f environment="$ENVIRONMENT" \
               -f per_page=20 \
               --jq '.[] | "\(.sha) \(.statuses_url)"' | \
             while IFS=' ' read -r sha statuses_url; do
@@ -88,25 +93,29 @@ jobs:
             done
           )
 
-          echo "short_sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
-
-          if [ -n "$DEPLOYED_SHA" ]; then
-            URL="https://github.com/${{ github.repository }}/compare/${DEPLOYED_SHA}...${{ github.sha }}"
-            echo "compare_url=$URL" >> $GITHUB_OUTPUT
-            echo "$URL"
-          else
-            echo "No previous successful deployment found for ${{ inputs.environment }}"
+          if [ -z "$DEPLOYED_SHA" ]; then
+            echo "No previous successful deployment found for $ENVIRONMENT"
+            exit 0
           fi
 
-  notify-diff:
-    name: Notify Git Diff
-    needs: git-diff-url
-    if: inputs.notify-changelog && needs.git-diff-url.outputs.compare_url != ''
-    uses: entur/gha-slack/.github/workflows/post.yml@v2
-    with:
-      channel_id: ${{ inputs.channel-id }}
-      message: "📋 New <${{ needs.git-diff-url.outputs.compare_url }}|changelog> for ${{ github.event.repository.name }} ${{ needs.git-diff-url.outputs.short_sha }} in ${{ inputs.environment }}"
-    secrets: inherit
+          URL="${{ github.server_url }}/${{ github.repository }}/compare/${DEPLOYED_SHA}...${GITHUB_SHA}"
+          echo "compare_url=$URL" >> "$GITHUB_OUTPUT"
+          echo "$URL"
+
+          # Per-environment emoji (falls back to :clipboard: for unknown envs).
+          case "$ENVIRONMENT" in
+            prd) EMOJI=":prod:" ;;
+            tst) EMOJI=":staging:" ;;
+            dev) EMOJI=":dev:" ;;
+            *)   EMOJI=":clipboard:" ;;
+          esac
+
+          MESSAGE="$EMOJI New <$URL|changelog> for $REPO_NAME ${GITHUB_SHA::7}."
+          # Add the approve link only when this run actually gates for approval.
+          if [ "$REQUIRE_APPROVAL" = "true" ]; then
+            MESSAGE="$MESSAGE <$RUN_URL|Approve deployment>"
+          fi
+          echo "slack_message=$MESSAGE" >> "$GITHUB_OUTPUT"
 
   tf-plan:
     name: Terraform Plan
@@ -120,21 +129,39 @@ jobs:
       environment: ${{ inputs.environment }}
     secrets: inherit
 
+  # Posted right before the approval gate (needs tf-plan) so the changelog and
+  # the "Approve deployment" link land in Slack exactly when a reviewer is
+  # needed. The message -- env emoji, and the approve link when require-approval
+  # is set -- is built in the git-diff-url job.
+  notify-diff:
+    name: Notify Git Diff
+    needs: [git-diff-url, tf-plan]
+    if: ${{ inputs.notify-changelog && needs.git-diff-url.outputs.compare_url != '' }}
+    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: ${{ needs.git-diff-url.outputs.slack_message }}
+    secrets: inherit
+
   approve:
     name: Approve deploy to ${{ inputs.environment }}
-    needs: [tf-plan]
+    # Waits for notify-diff so the "Approve deployment" Slack message is posted
+    # right before the gate opens. Still runs when notify-diff is skipped (no
+    # changelog / notify-changelog off) or fails, hence the status-function
+    # guard rather than a plain input check.
+    needs: [tf-plan, notify-diff]
     # Opt-in gate. When require-approval is false this job is skipped and every
     # downstream `if` below treats 'skipped' as "proceed".
-    if: ${{ inputs.require-approval }}
+    if: ${{ !cancelled() && inputs.require-approval && needs.tf-plan.result == 'success' }}
     runs-on: ubuntu-latest
-    # Pauses on a per-environment "approval-<env>" GitHub Environment (e.g.
-    # approval-prd), so the target is unambiguous in the approval dialog and in
-    # review notifications. Required reviewers live on that environment. No
-    # concurrency group: the job only waits and holds nothing, so several runs
-    # may sit at the gate at once without cancelling or blocking each other or a
-    # newer run's apply/deploy. Nothing is auto-cancelled -- approve the newest
-    # waiting run and decline/cancel older ones (see concurrency note at top).
-    environment: approval-${{ inputs.environment }}
+    # Pauses on a single "approval" GitHub Environment where the required
+    # reviewers live; the target env is conveyed by the Slack message and this
+    # job's name, not the environment name. No concurrency group: the job only
+    # waits and holds nothing, so several runs may sit at the gate at once
+    # without cancelling or blocking each other or a newer run's apply/deploy.
+    # Nothing is auto-cancelled -- approve the newest waiting run and
+    # decline/cancel older ones (see concurrency note at top).
+    environment: approval
     steps:
       - name: Approved
         run: echo "Deployment of ${{ inputs.image }} to ${{ inputs.environment }} approved"
@@ -178,6 +205,5 @@ jobs:
     with:
       environment: ${{ inputs.environment }}
       image: ${{ inputs.image }}
-      slack_channel_id: ${{ inputs.channel-id }}
       container_name: ${{ inputs.container-name }}
     secrets: inherit
