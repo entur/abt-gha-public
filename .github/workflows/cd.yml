@@ -41,6 +41,7 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       deployments: read
+      contents: read
     outputs:
       compare_url: ${{ steps.compare.outputs.compare_url }}
       slack_message: ${{ steps.compare.outputs.slack_message }}
@@ -85,7 +86,16 @@ jobs:
             *)   EMOJI=":clipboard:" ;;
           esac
 
-          MESSAGE="$EMOJI New <$URL|changelog> for $REPO_NAME ${GITHUB_SHA::7}."
+          COMMIT=$(gh api "repos/${{ github.repository }}/commits/${GITHUB_SHA}" 2>/dev/null || echo '{}')
+          AUTHOR=$(printf '%s' "$COMMIT" | jq -r '.author.login // .commit.author.name // "unknown"')
+          SUBJECT=$(printf '%s' "$COMMIT" | jq -r '.commit.message // ""' | head -n1 | tr -d '`<>')
+          EXCERPT=$(printf '%s' "$SUBJECT" | cut -c1-15 | sed 's/[[:space:]]*$//')
+          [ "${#SUBJECT}" -gt 15 ] && EXCERPT="$EXCERPT..."
+          DESC="$AUTHOR"
+          [ -n "$EXCERPT" ] && DESC="$AUTHOR ($EXCERPT)"
+
+          BT='`'
+          MESSAGE="$EMOJI New <$URL|changelog> for ${BT}${REPO_NAME}${BT} $DESC."
           if [ "$REQUIRE_APPROVAL" = "true" ]; then
             MESSAGE="$MESSAGE <$RUN_URL|Approve deployment>"
           fi
