@@ -102,11 +102,12 @@ jobs:
     secrets: inherit
 
   # needs tf-plan so the changelog + approve link post right before the gate.
+  # @v3 exposes message_ts.
   notify-diff:
     name: Notify Git Diff
     needs: [git-diff-url, tf-plan]
     if: ${{ inputs.notify-changelog && needs.git-diff-url.outputs.compare_url != '' }}
-    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    uses: entur/gha-slack/.github/workflows/post.yml@v3
     with:
       channel_id: ${{ inputs.channel-id }}
       message: ${{ needs.git-diff-url.outputs.slack_message }}
@@ -122,6 +123,17 @@ jobs:
     steps:
       - name: Approved
         run: echo "Deployment of ${{ inputs.image }} to ${{ inputs.environment }} approved"
+
+  # React on the changelog message once approved.
+  notify-approved:
+    needs: [notify-diff, approve]
+    if: ${{ needs.approve.result == 'success' && needs.notify-diff.outputs.message_ts != '' }}
+    uses: entur/gha-slack/.github/workflows/react.yml@v3
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message_ts: ${{ needs.notify-diff.outputs.message_ts }}
+      emoji: white_check_mark
+    secrets: inherit
 
   tf-apply:
     name: Terraform Apply
