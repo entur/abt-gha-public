@@ -1,0 +1,122 @@
+# Resolve the deployable image reference (name:tag) for a git commit SHA.
+#
+# gha-docker/push.yml publishes deployable images tagged
+# 'main.<YYYYMMDD>-SHA<short7>' (built from the main pipeline; pushed to
+# vars.DOCKER_REGISTRY, defaulting to eu.gcr.io/entur-system-1287). The build
+# date is not derivable from a SHA, so this workflow queries the registry over
+# the Docker Registry v2 API and matches that tag for the given SHA, returning
+# the newest match. Works for both eu.gcr.io and Artifact Registry.
+#
+# The `image` output is 'name:tag' WITHOUT the registry prefix — mirroring
+# docker-build-publish.yml's image_and_tag, because gha-helm prepends the
+# registry itself. Passing a registry-qualified image would double it.
+name: Resolve image from SHA
+
+on:
+  workflow_call:
+    inputs:
+      git_sha:
+        description: Git commit SHA to resolve a published image for
+        required: true
+        type: string
+      image_name:
+        description: "Image name (defaults to the calling repository name)"
+        required: false
+        type: string
+        default: ""
+      registry:
+        description: "Registry, e.g. eu.gcr.io/entur-system-1287 (defaults to vars.DOCKER_REGISTRY, then eu.gcr.io/entur-system-1287)"
+        required: false
+        type: string
+        default: ""
+    outputs:
+      image:
+        description: "Image reference to deploy as 'name:tag' (no registry prefix; feed straight to cd.yml / gha-helm)"
+        value: ${{ jobs.resolve.outputs.image }}
+      image_tag:
+        description: "Resolved image tag"
+        value: ${{ jobs.resolve.outputs.image_tag }}
+      image_name:
+        description: "Image name without tag or registry prefix"
+        value: ${{ jobs.resolve.outputs.image_name }}
+
+jobs:
+  resolve:
+    name: Resolve image
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    outputs:
+      image: ${{ steps.resolve.outputs.image }}
+      image_tag: ${{ steps.resolve.outputs.image_tag }}
+      image_name: ${{ steps.resolve.outputs.image_name }}
+    steps:
+      - name: Authenticate with Google Cloud
+        id: auth
+        uses: google-github-actions/auth@v3.0.0
+        with:
+          workload_identity_provider: ${{ vars.CI_WORKLOAD_IDENTITY_PROVIDER }}
+          service_account: ${{ vars.CI_SERVICE_ACCOUNT }}
+          token_format: access_token
+
+      - name: Resolve published image for SHA
+        id: resolve
+        env:
+          ACCESS_TOKEN: ${{ steps.auth.outputs.access_token }}
+          GIT_SHA: ${{ inputs.git_sha }}
+          INPUT_IMAGE_NAME: ${{ inputs.image_name }}
+          INPUT_REGISTRY: ${{ inputs.registry }}
+          DOCKER_REGISTRY: ${{ vars.DOCKER_REGISTRY }}
+          REPO_FULL: ${{ github.repository }}
+        run: |
+          set -euo pipefail
+
+          REGISTRY="${INPUT_REGISTRY:-${DOCKER_REGISTRY:-eu.gcr.io/entur-system-1287}}"
+          NAME="${INPUT_IMAGE_NAME:-${REPO_FULL#*/}}"
+          HOST="${REGISTRY%%/*}"                 # e.g. eu.gcr.io
+          REPO_PATH="${REGISTRY#*/}/${NAME}"     # e.g. entur-system-1287/abt-backoffice
+          IMAGE_NAME="${REGISTRY}/${NAME}"
+
+          SHA="$(printf '%s' "$GIT_SHA" | tr '[:upper:]' '[:lower:]' | tr -d '[:space:]')"
+          if ! printf '%s' "$SHA" | grep -qE '^[0-9a-f]{7,40}$'; then
+            echo "::error::Input '$GIT_SHA' is not a valid git commit SHA (expected 7-40 hex characters)." >&2
+            exit 1
+          fi
+          SHORT="${SHA:0:7}"
+
+          echo "Querying https://${HOST}/v2/${REPO_PATH}/tags/list for 'main.<date>-SHA${SHORT}' ..."
+          HTTP_CODE="$(curl -sSL -o /tmp/tags.json -w '%{http_code}' \
+            -u "oauth2accesstoken:${ACCESS_TOKEN}" \
+            "https://${HOST}/v2/${REPO_PATH}/tags/list")"
+          if [ "$HTTP_CODE" != "200" ]; then
+            echo "::error::Registry query failed (HTTP ${HTTP_CODE}) for ${IMAGE_NAME}." >&2
+            cat /tmp/tags.json >&2 || true
+            exit 1
+          fi
+
+          # Deployable images are tagged main.<YYYYMMDD>-SHA<short7>; match exactly that.
+          MATCHES="$(jq -r '.tags[]?' /tmp/tags.json | grep -E "^main\.[0-9]{8}-SHA${SHORT}$" | sort -u || true)"
+          if [ -z "$MATCHES" ]; then
+            echo "::error::No published image found in ${IMAGE_NAME} for commit ${SHORT}. Was an image built and pushed for this commit?" >&2
+            exit 1
+          fi
+
+          COUNT="$(printf '%s\n' "$MATCHES" | wc -l | tr -d ' ')"
+          TAG="$(printf '%s\n' "$MATCHES" | tail -n1)"   # newest; YYYYMMDD sorts chronologically
+          if [ "$COUNT" -gt 1 ]; then
+            echo "::warning::Found ${COUNT} tags for commit ${SHORT}; using newest '${TAG}'."
+            printf 'All matching tags:\n%s\n' "$MATCHES"
+          fi
+
+          # Output name:tag only — gha-helm prepends the registry itself.
+          echo "image=${NAME}:${TAG}" >> "$GITHUB_OUTPUT"
+          echo "image_tag=${TAG}" >> "$GITHUB_OUTPUT"
+          echo "image_name=${NAME}" >> "$GITHUB_OUTPUT"
+          {
+            echo "### Resolved image"
+            echo ""
+            echo "- **Commit:** \`${SHORT}\`"
+            echo "- **Deploy input (name:tag):** \`${NAME}:${TAG}\`"
+            echo "- **Pushed to:** \`${IMAGE_NAME}:${TAG}\`"
+          } >> "$GITHUB_STEP_SUMMARY"
