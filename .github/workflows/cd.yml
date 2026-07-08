@@ -1,3 +1,7 @@
+# CD for one environment: terraform plan -> [approval] -> apply -> deploy.
+# Approval is opt-in (require-approval) and gates on an "approval" Environment;
+# its reviewers must NOT also be on tst/prd, or apply and deploy gate twice.
+
 name: CD
 
 on:
@@ -25,6 +29,11 @@ on:
         required: false
         type: boolean
         default: true
+      require-approval:
+        description: Require manual approval on the "approval" Environment before apply/deploy
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   git-diff-url:
@@ -32,19 +41,24 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       deployments: read
+      contents: read
     outputs:
       compare_url: ${{ steps.compare.outputs.compare_url }}
-      short_sha: ${{ steps.compare.outputs.short_sha }}
+      slack_message: ${{ steps.compare.outputs.slack_message }}
     steps:
-      - name: Get compare URL since last successful deployment
+      - name: Build changelog Slack message
         id: compare
         env:
           GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          ENVIRONMENT: ${{ inputs.environment }}
+          REPO_NAME: ${{ github.event.repository.name }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          REQUIRE_APPROVAL: ${{ inputs.require-approval }}
         run: |
           DEPLOYED_SHA=$(
             gh api "repos/${{ github.repository }}/deployments" \
               -X GET \
-              -f environment="${{ inputs.environment }}" \
+              -f environment="$ENVIRONMENT" \
               -f per_page=20 \
               --jq '.[] | "\(.sha) \(.statuses_url)"' | \
             while IFS=' ' read -r sha statuses_url; do
@@ -56,38 +70,90 @@ jobs:
             done
           )
 
-          echo "short_sha=${GITHUB_SHA::7}" >> $GITHUB_OUTPUT
-
-          if [ -n "$DEPLOYED_SHA" ]; then
-            URL="https://github.com/${{ github.repository }}/compare/${DEPLOYED_SHA}...${{ github.sha }}"
-            echo "compare_url=$URL" >> $GITHUB_OUTPUT
-            echo "$URL"
-          else
-            echo "No previous successful deployment found for ${{ inputs.environment }}"
+          if [ -z "$DEPLOYED_SHA" ]; then
+            echo "No previous successful deployment found for $ENVIRONMENT"
+            exit 0
           fi
 
-  notify-diff:
-    name: Notify Git Diff
-    needs: git-diff-url
-    if: inputs.notify-changelog && needs.git-diff-url.outputs.compare_url != ''
-    uses: entur/gha-slack/.github/workflows/post.yml@v2
-    with:
-      channel_id: ${{ inputs.channel-id }}
-      message: "📋 New <${{ needs.git-diff-url.outputs.compare_url }}|changelog> for ${{ github.event.repository.name }} ${{ needs.git-diff-url.outputs.short_sha }} in ${{ inputs.environment }}"
-    secrets: inherit
+          URL="${{ github.server_url }}/${{ github.repository }}/compare/${DEPLOYED_SHA}...${GITHUB_SHA}"
+          echo "compare_url=$URL" >> "$GITHUB_OUTPUT"
+          echo "$URL"
+
+          case "$ENVIRONMENT" in
+            prd) EMOJI=":prod:" ;;
+            tst) EMOJI=":staging:" ;;
+            dev) EMOJI=":dev:" ;;
+            *)   EMOJI=":clipboard:" ;;
+          esac
+
+          COMMIT=$(gh api "repos/${{ github.repository }}/commits/${GITHUB_SHA}" 2>/dev/null || echo '{}')
+          AUTHOR=$(printf '%s' "$COMMIT" | jq -r '.author.login // .commit.author.name // "unknown"')
+          SUBJECT=$(printf '%s' "$COMMIT" | jq -r '.commit.message // ""' | head -n1 | tr -d '`<>')
+          EXCERPT=$(printf '%s' "$SUBJECT" | cut -c1-15 | sed 's/[[:space:]]*$//')
+          [ "${#SUBJECT}" -gt 15 ] && EXCERPT="$EXCERPT..."
+          DESC="$AUTHOR"
+          [ -n "$EXCERPT" ] && DESC="$AUTHOR ($EXCERPT)"
+
+          BT='`'
+          MESSAGE="$EMOJI New <$URL|changelog> for ${BT}${REPO_NAME}${BT} $DESC."
+          if [ "$REQUIRE_APPROVAL" = "true" ]; then
+            MESSAGE="$MESSAGE <$RUN_URL|Approve deployment>"
+          fi
+          echo "slack_message=$MESSAGE" >> "$GITHUB_OUTPUT"
 
   tf-plan:
     name: Terraform Plan
+    concurrency:
+      group: cd-tf-plan-${{ inputs.environment }}-${{ github.repository }}
+      cancel-in-progress: true
     uses: entur/gha-terraform/.github/workflows/plan.yml@v2
     with:
       environment: ${{ inputs.environment }}
     secrets: inherit
 
+  # needs tf-plan so the changelog + approve link post right before the gate.
+  # @v3 exposes message_ts.
+  notify-diff:
+    name: Notify Git Diff
+    needs: [git-diff-url, tf-plan]
+    if: ${{ inputs.notify-changelog && needs.git-diff-url.outputs.compare_url != '' }}
+    uses: entur/gha-slack/.github/workflows/post.yml@v3
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: ${{ needs.git-diff-url.outputs.slack_message }}
+    secrets: inherit
+
+  approve:
+    name: Approve deployment
+    needs: [tf-plan, notify-diff]
+    # !cancelled() so this still runs when notify-diff is skipped.
+    if: ${{ !cancelled() && inputs.require-approval && needs.tf-plan.result == 'success' }}
+    runs-on: ubuntu-latest
+    environment: approval
+    steps:
+      - name: Approved
+        run: echo "Deployment of ${{ inputs.image }} to ${{ inputs.environment }} approved"
+
+  # React on the changelog message once approved.
+  notify-approved:
+    needs: [notify-diff, approve]
+    if: ${{ needs.approve.result == 'success' && needs.notify-diff.outputs.message_ts != '' }}
+    uses: entur/gha-slack/.github/workflows/react.yml@v3
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message_ts: ${{ needs.notify-diff.outputs.message_ts }}
+      emoji: white_check_mark
+    secrets: inherit
+
   tf-apply:
     name: Terraform Apply
-    needs: [tf-plan]
+    needs: [tf-plan, approve]
+    if: >
+      always() && !cancelled()
+      && needs.tf-plan.result == 'success'
+      && (needs.approve.result == 'success' || needs.approve.result == 'skipped')
     concurrency:
-      group: cd-deploy-${{ inputs.environment }}-${{ github.repository }}
+      group: cd-tf-apply-${{ inputs.environment }}-${{ github.repository }}
       cancel-in-progress: false
     uses: entur/gha-terraform/.github/workflows/apply.yml@v2
     with:
@@ -97,16 +163,18 @@ jobs:
 
   deploy:
     name: Deploy
-    needs: [tf-apply]
-    # Terraform apply is skipped on empty plan. This if ensures that job is run even if previous step is skipped
-    if: always() && !cancelled() && !contains(needs.*.result, 'failure')
+    needs: [tf-apply, approve]
+    if: >
+      always() && !cancelled()
+      && !contains(needs.*.result, 'failure')
+      && (needs.approve.result == 'success' || needs.approve.result == 'skipped')
+      && (needs.tf-apply.result == 'success' || needs.tf-apply.result == 'skipped')
     concurrency:
-      group: cd-deploy-${{ inputs.environment }}-${{ github.repository }}
+      group: cd-helm-deploy-${{ inputs.environment }}-${{ github.repository }}
       cancel-in-progress: false
     uses: entur/gha-helm/.github/workflows/deploy.yml@v1
     with:
       environment: ${{ inputs.environment }}
       image: ${{ inputs.image }}
-      slack_channel_id: ${{ inputs.channel-id }}
       container_name: ${{ inputs.container-name }}
     secrets: inherit
