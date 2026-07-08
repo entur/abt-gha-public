@@ -56,7 +56,7 @@ jobs:
     name: Notify Git Diff
     needs: git-diff-url
     if: needs.git-diff-url.outputs.compare_url != ''
-    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    uses: entur/gha-slack/.github/workflows/post.yml@v3.1.2
     with:
       channel_id: ${{ inputs.channel-id }}
       message: "📋 New <${{ needs.git-diff-url.outputs.compare_url }}|changelog> for ${{ github.event.repository.name }} ${{ needs.git-diff-url.outputs.short_sha }} in ${{ inputs.environment }}"

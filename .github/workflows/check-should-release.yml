@@ -111,7 +111,7 @@ jobs:
   post-to-slack-if-non-pull-request:
     needs: should-release
     if: failure() && inputs.channel-id != 'NO_ID'
-    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    uses: entur/gha-slack/.github/workflows/post.yml@v3.1.2
     with:
       channel_id: ${{ inputs.channel-id }}
       message: "🟡 Release evaluation script failed for ${{ github.repository }}\n ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

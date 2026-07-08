@@ -148,7 +148,7 @@ jobs:
   post-fail-to-slack-if-fail:
     needs: auto-merge
     if: failure() && inputs.channel-id != 'NO_ID'
-    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    uses: entur/gha-slack/.github/workflows/post.yml@v3.1.2
     with:
       channel_id: ${{ inputs.channel-id }}
       message: "⚫ Automerge of dependabot PR failed. <${{ github.event.pull_request.html_url }}|${{ github.event.pull_request.head.ref }}>"

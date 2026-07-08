@@ -32,7 +32,7 @@ jobs:
   post-to-slack-if-failure:
     needs: lint-proto
     if: failure() && inputs.channel-id != 'NO_ID'
-    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    uses: entur/gha-slack/.github/workflows/post.yml@v3.1.2
     with:
       channel_id: ${{ inputs.channel-id }}
       message: "🟡 Lint-proto failed for ${{ github.event.pull_request.title }} \n ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

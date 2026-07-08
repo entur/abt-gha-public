@@ -104,7 +104,7 @@ jobs:
   post-to-slack-if-triggered:
     needs: check-last-run
     if: success() && needs.check-last-run.outputs.dispatched == 'true' && inputs.channel-id != 'NO_ID'
-    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    uses: entur/gha-slack/.github/workflows/post.yml@v3.1.2
     with:
       channel_id: ${{ inputs.channel-id }}
       message: "🔵 ${{ github.repository }} - Triggered ${{ inputs.workflow }} on ${{ inputs.target-ref }} (${{ needs.check-last-run.outputs.status-text }})"
@@ -113,7 +113,7 @@ jobs:
   post-to-slack-if-stale:
     needs: check-last-run
     if: success() && needs.check-last-run.outputs.stale == 'true' && needs.check-last-run.outputs.dispatched == 'false' && inputs.channel-id != 'NO_ID'
-    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    uses: entur/gha-slack/.github/workflows/post.yml@v3.1.2
     with:
       channel_id: ${{ inputs.channel-id }}
       message: "⚠️ ${{ github.repository }} - ${{ inputs.workflow }} ${{ needs.check-last-run.outputs.status-text }}"
@@ -122,7 +122,7 @@ jobs:
   post-fail-to-slack-if-fail:
     needs: check-last-run
     if: failure() && inputs.channel-id != 'NO_ID'
-    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    uses: entur/gha-slack/.github/workflows/post.yml@v3.1.2
     with:
       channel_id: ${{ inputs.channel-id }}
       message: "⚫ ${{ github.repository }} - Check last workflow run failed for ${{ inputs.workflow }}"

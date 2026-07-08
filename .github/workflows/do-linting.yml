@@ -34,7 +34,7 @@ jobs:
   post-to-slack-if-failure:
     needs: [helm-lint, docker-lint, terraform-lint]
     if: failure() && inputs.channel-id != 'NO_ID'
-    uses: entur/gha-slack/.github/workflows/post.yml@v3
+    uses: entur/gha-slack/.github/workflows/post.yml@v3.1.2
     with:
       channel_id: ${{ inputs.channel-id }}
       message: "🟡 Linting failed for ${{ github.repository }}\n${{ github.event.pull_request.title }} - ${{ github.event.pull_request.url }}"
