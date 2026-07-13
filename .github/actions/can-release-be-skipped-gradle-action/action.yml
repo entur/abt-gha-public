@@ -93,7 +93,7 @@ runs:
         }
 
         # Runs Gradle analysis for the given commit, writing sorted artifact lists
-        # to the supplied files. Only runs the tasks that are actually needed.
+        # to the supplied files.
         run_analysis() {
           local target_commit=$1
           local plugins_file=$2
@@ -114,12 +114,10 @@ runs:
             extract_gradle_artifacts "$gradle_output" > "$test_deps_file"
           fi
 
-          # Extract main (runtime) deps whenever either ignore flag is active: main deps
-          # are always checked as a guard, regardless of which flag triggered analysis.
-          if [ "$IGNORE_PLUGIN_UPDATE_COMMITS" = "true" ] || [ "$IGNORE_TEST_DEPENDENCY_UPDATE_COMMITS" = "true" ]; then
-            ./gradlew -q dependencies --configuration runtimeClasspath > "$gradle_output" 2>&1
-            extract_gradle_artifacts "$gradle_output" > "$main_deps_file"
-          fi
+          # Always extract main (runtime) dependencies as a guard: a commit is only
+          # skip-worthy if main deps are unchanged, regardless of which ignore flag fired.
+          ./gradlew -q dependencies --configuration runtimeClasspath > "$gradle_output" 2>&1
+          extract_gradle_artifacts "$gradle_output" > "$main_deps_file"
         }
 
         # Runs full before/after Gradle analysis for a commit and returns 0 when
