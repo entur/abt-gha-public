@@ -98,6 +98,7 @@ runs:
           local target_commit=$1
           local plugins_file=$2
           local test_deps_file=$3
+          local main_deps_file=$4
           local gradle_output
           gradle_output=$(mktemp)
 
@@ -112,6 +113,11 @@ runs:
             ./gradlew -q dependencies --configuration testRuntimeClasspath > "$gradle_output" 2>&1
             extract_gradle_artifacts "$gradle_output" > "$test_deps_file"
           fi
+
+          if [ "$IGNORE_PLUGIN_UPDATE_COMMITS" = "true" ] || [ "$IGNORE_TEST_DEPENDENCY_UPDATE_COMMITS" = "true" ]; then
+            ./gradlew -q dependencies --configuration runtimeClasspath > "$gradle_output" 2>&1
+            extract_gradle_artifacts "$gradle_output" > "$main_deps_file"
+          fi
         }
 
         # Runs full before/after Gradle analysis for a commit and returns 0 when
@@ -122,22 +128,28 @@ runs:
           original_ref=$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse HEAD)
           trap 'git checkout -q "$original_ref"' EXIT
 
-          local before_plugins after_plugins before_test_deps after_test_deps
+          local before_plugins after_plugins before_test_deps after_test_deps before_main_deps after_main_deps
           before_plugins=$(mktemp)
           after_plugins=$(mktemp)
           before_test_deps=$(mktemp)
           after_test_deps=$(mktemp)
+          before_main_deps=$(mktemp)
+          after_main_deps=$(mktemp)
 
-          run_analysis "$commit"    "$after_plugins"  "$after_test_deps"
-          run_analysis "${commit}^" "$before_plugins" "$before_test_deps"
+          run_analysis "$commit"    "$after_plugins"  "$after_test_deps"  "$after_main_deps"
+          run_analysis "${commit}^" "$before_plugins" "$before_test_deps" "$before_main_deps"
 
           git checkout -q "$original_ref"
           trap - EXIT
 
-          local plugins_changed=false test_deps_changed=false
+          local plugins_changed=false test_deps_changed=false main_deps_changed=false
           diff "$before_plugins"   "$after_plugins"   > /dev/null 2>&1 || plugins_changed=true
           diff "$before_test_deps" "$after_test_deps" > /dev/null 2>&1 || test_deps_changed=true
+          diff "$before_main_deps" "$after_main_deps" > /dev/null 2>&1 || main_deps_changed=true
 
+          if [ "$main_deps_changed" = "true" ]; then
+            return 1
+          fi
           if [ "$IGNORE_PLUGIN_UPDATE_COMMITS" = "true" ] && [ "$plugins_changed" = "true" ]; then
             return 0
           fi
