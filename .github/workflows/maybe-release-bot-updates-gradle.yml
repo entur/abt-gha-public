@@ -1,0 +1,148 @@
+name: Maybe release bot updates - Gradle
+# Delegates commit evaluation to the can-release-be-skipped-gradle action and
+# optionally dispatches the target workflow when a release is warranted.
+on:
+  workflow_call:
+    inputs:
+      workflow:
+        description: "Workflow filename to dispatch when a release is warranted (e.g. gradle-release.yml)."
+        required: true
+        type: string
+      release-branch:
+        description: "Branch to check commits against."
+        required: false
+        type: string
+        default: main
+      release-prefix:
+        description: "Prefix used for release tags."
+        required: false
+        type: string
+        default: "release-"
+      trigger-release:
+        description: "When true, dispatches the workflow if a release is warranted. When false, only reports."
+        required: false
+        type: boolean
+        default: false
+      bot-name:
+        description: "Git author name of the bot whose commits are evaluated."
+        required: false
+        type: string
+        default: "dependabot[bot]"
+      ignore-plugin-update-commits:
+        description: "Treat bot commits that only update Gradle plugins as skip-worthy."
+        required: false
+        type: boolean
+        default: true
+      ignore-test-dependency-update-commits:
+        description: "Treat bot commits that only update test-scoped dependencies as skip-worthy."
+        required: false
+        type: boolean
+        default: true
+      java-version:
+        description: "Java version used when running Gradle analysis."
+        required: false
+        type: string
+        default: "25"
+      channel-id:
+        description: "Slack channel-id to post notification to."
+        required: false
+        type: string
+        default: ${{ vars.channel_id || 'NO_ID'}}
+    outputs:
+      should-release:
+        description: "true when a release is warranted."
+        value: ${{ jobs.check-gradle-commits.outputs.should-release }}
+      dispatched:
+        description: "true when the target workflow was dispatched."
+        value: ${{ jobs.check-gradle-commits.outputs.dispatched }}
+      status-text:
+        description: "Human-readable summary of the decision."
+        value: ${{ jobs.check-gradle-commits.outputs.status-text }}
+
+jobs:
+  check-gradle-commits:
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      actions: write
+    outputs:
+      should-release: ${{ steps.result.outputs.should-release }}
+      dispatched: ${{ steps.result.outputs.dispatched }}
+      status-text: ${{ steps.result.outputs.status-text }}
+    steps:
+      - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+        with:
+          ref: ${{ inputs.release-branch }}
+          fetch-depth: 0
+          fetch-tags: true
+
+      - name: Set up Java ${{ inputs.java-version }}
+        uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5.3.0
+        with:
+          java-version: ${{ inputs.java-version }}
+          distribution: liberica
+
+      - name: Setup Gradle
+        uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
+
+      - name: Check if release can be skipped
+        id: check
+        uses: entur/abt-gha-public/.github/actions/can-release-be-skipped-gradle-action@reduceMavenReleases
+        with:
+          release-branch: ${{ inputs.release-branch }}
+          release-prefix: ${{ inputs.release-prefix }}
+          bot-name: ${{ inputs.bot-name }}
+          ignore-plugin-update-commits: ${{ inputs.ignore-plugin-update-commits }}
+          ignore-test-dependency-update-commits: ${{ inputs.ignore-test-dependency-update-commits }}
+
+      - name: Dispatch release workflow
+        id: dispatch
+        if: steps.check.outputs.skip == 'false' && inputs.trigger-release == true
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh workflow run "${{ inputs.workflow }}" --repo "${{ github.repository }}" --ref "${{ inputs.release-branch }}"
+          echo "dispatched=true" >> "$GITHUB_OUTPUT"
+
+      - name: Set job outputs
+        id: result
+        if: always()
+        env:
+          SKIP: ${{ steps.check.outputs.skip }}
+          REASON: ${{ steps.check.outputs.reason }}
+          DISPATCHED: ${{ steps.dispatch.outputs.dispatched || 'false' }}
+        run: |
+          if [ "$SKIP" = "false" ]; then
+            echo "should-release=true" >> "$GITHUB_OUTPUT"
+          else
+            echo "should-release=false" >> "$GITHUB_OUTPUT"
+          fi
+          echo "dispatched=$DISPATCHED" >> "$GITHUB_OUTPUT"
+          echo "status-text=$REASON" >> "$GITHUB_OUTPUT"
+
+  post-to-slack-if-triggered:
+    needs: check-gradle-commits
+    if: success() && needs.check-gradle-commits.outputs.dispatched == 'true' && inputs.channel-id != 'NO_ID'
+    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: "🔵 ${{ github.repository }} - Triggered ${{ inputs.workflow }} on ${{ inputs.release-branch }} (${{ needs.check-gradle-commits.outputs.status-text }})"
+    secrets: inherit
+
+  post-to-slack-if-skipped:
+    needs: check-gradle-commits
+    if: success() && needs.check-gradle-commits.outputs.should-release == 'false' && inputs.channel-id != 'NO_ID'
+    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: "⏭️ ${{ github.repository }} - Release skipped: ${{ needs.check-gradle-commits.outputs.status-text }}"
+    secrets: inherit
+
+  post-fail-to-slack-if-fail:
+    needs: check-gradle-commits
+    if: failure() && inputs.channel-id != 'NO_ID'
+    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    with:
+      channel_id: ${{ inputs.channel-id }}
+      message: "⚫ ${{ github.repository }} - Gradle release check failed for ${{ inputs.workflow }}"
+    secrets: inherit
