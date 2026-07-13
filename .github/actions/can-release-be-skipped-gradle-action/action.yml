@@ -1,4 +1,4 @@
-name: Can Release Be Skipped (Maven)
+name: Can Release Be Skipped (Gradle) Action
 description: |
   Evaluates bot commits on the given branch since the last release tag and
   outputs whether the release can be skipped.
@@ -9,7 +9,7 @@ description: |
   they are expected to be handled by normal push triggers.
 
   Requires: the repository must already be checked out with full history
-  (fetch-depth: 0, fetch-tags: true).
+  (fetch-depth: 0, fetch-tags: true), and the Gradle wrapper must be present.
 
 inputs:
   release-branch:
@@ -19,23 +19,24 @@ inputs:
   release-prefix:
     description: Prefix used for release tags.
     required: false
-    default: "v"
+    default: "release-"
   bot-name:
     description: Git author name of the bot whose commits are evaluated.
     required: false
     default: "dependabot[bot]"
   ignore-plugin-update-commits:
     description: >
-      Treat bot commits that only update Maven plugins as skip-worthy.
-      Requires Maven to resolve and compare the plugin list before and after
-      the commit.
+      Treat bot commits that only update Gradle plugins as skip-worthy.
+      Uses ./gradlew buildEnvironment to compare the plugin classpath before
+      and after the commit.
     required: false
     default: "true"
   ignore-test-dependency-update-commits:
     description: >
       Treat bot commits that only update test-scoped dependencies as
-      skip-worthy. Requires Maven to resolve and compare dependencies before
-      and after the commit.
+      skip-worthy. Uses ./gradlew dependencies --configuration
+      testRuntimeClasspath to compare the test dependency graph before and
+      after the commit.
     required: false
     default: "true"
 
@@ -64,60 +65,58 @@ runs:
 
         # ── Helpers ──────────────────────────────────────────────────────────────
 
-        # Returns true when every line in CHANGED_FILES is a pom.xml at any depth.
-        is_pom_only() {
-          local non_pom
-          non_pom=$(echo "$1" | grep -v '^pom\.xml$' | grep -v '/pom\.xml$' || true)
-          [ -z "$non_pom" ]
+        # Returns true when every changed file is a Gradle build file at any depth.
+        is_gradle_build_file_only() {
+          local non_gradle
+          non_gradle=$(echo "$1" \
+            | grep -v '\.gradle$' \
+            | grep -v '\.gradle\.kts$' \
+            | grep -v 'libs\.versions\.toml$' \
+            | grep -v 'gradle-wrapper\.properties$' \
+            || true)
+          [ -z "$non_gradle" ]
         }
 
-        # Runs Maven resolution for both plugins and test-deps at the given commit,
-        # writing sorted artifact lists to the supplied files.
-        # Only runs the goals that are actually needed based on the skip flags.
+        # Extracts unique artifact coordinates (group:artifact:version) from
+        # Gradle's dependency tree output (handles +---, \---, | and -> notation).
+        extract_gradle_artifacts() {
+          awk '
+            /[+\\]--- / {
+              line = $0
+              sub(/^[[:space:]]*[+\\|]--- /, "", line)
+              sub(/ -> .*$/, "", line)
+              sub(/ \(.*\)$/, "", line)
+              sub(/[[:space:]]*$/, "", line)
+              if (line ~ /^[^[:space:]]+:[^[:space:]]+:[^[:space:]]+$/) print line
+            }
+          ' "$1" | sort -u
+        }
+
+        # Runs Gradle analysis for the given commit, writing sorted artifact lists
+        # to the supplied files. Only runs the tasks that are actually needed.
         run_analysis() {
           local target_commit=$1
           local plugins_file=$2
           local test_deps_file=$3
-          local mvn_output
-          mvn_output=$(mktemp)
+          local gradle_output
+          gradle_output=$(mktemp)
 
           git checkout -q "$target_commit"
 
           if [ "$IGNORE_PLUGIN_UPDATE_COMMITS" = "true" ]; then
-            mvn -B dependency:resolve-plugins > "$mvn_output" 2>&1
-            awk '
-              /The following plugins have been resolved:/ { flag=1; next }
-              flag && /----------/ { flag=0 }
-              flag {
-                clean_line = $0
-                sub(/^[[:space:]]*(\[INFO\])?[[:space:]]*/, "", clean_line)
-                sub(/[[:space:]\r]+$/, "", clean_line)
-                print clean_line
-              }
-            ' "$mvn_output" | sort -u > "$plugins_file"
+            ./gradlew -q buildEnvironment > "$gradle_output" 2>&1
+            extract_gradle_artifacts "$gradle_output" > "$plugins_file"
           fi
 
           if [ "$IGNORE_TEST_DEPENDENCY_UPDATE_COMMITS" = "true" ]; then
-            mvn -B dependency:resolve > "$mvn_output" 2>&1
-            awk '
-              /The following files have been resolved:/ { flag=1; next }
-              flag && /----------/ { flag=0 }
-              flag {
-                clean_line = $0
-                sub(/^[[:space:]]*(\[INFO\])?[[:space:]]*/, "", clean_line)
-                sub(/[[:space:]\r]+$/, "", clean_line)
-                if (clean_line ~ /:test([[:space:]]|$)/) {
-                  sub(/[[:space:]]*--[[:space:]]*module.*$/, "", clean_line)
-                  print clean_line
-                }
-              }
-            ' "$mvn_output" | sort -u > "$test_deps_file"
+            ./gradlew -q dependencies --configuration testRuntimeClasspath > "$gradle_output" 2>&1
+            extract_gradle_artifacts "$gradle_output" > "$test_deps_file"
           fi
         }
 
-        # Runs full before/after Maven analysis for a commit and returns 0 when
-        # the commit qualifies as skip-worthy under the active skip flags.
-        is_skip_worthy_pom_change() {
+        # Runs full before/after Gradle analysis for a commit and returns 0 when
+        # the commit qualifies as skip-worthy under the active ignore flags.
+        is_skip_worthy_gradle_change() {
           local commit=$1
           local original_ref
           original_ref=$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse HEAD)
@@ -150,7 +149,7 @@ runs:
 
         # ── Find branch tip and latest release tag ────────────────────────────────
 
-        echo "## Can Release Be Skipped (Maven)" >> "$GITHUB_STEP_SUMMARY"
+        echo "## Can Release Be Skipped (Gradle)" >> "$GITHUB_STEP_SUMMARY"
 
         BRANCH_TIP=$(git rev-parse "${RELEASE_BRANCH}")
         echo "**Branch:** \`${RELEASE_BRANCH}\` @ \`${BRANCH_TIP:0:8}\`" >> "$GITHUB_STEP_SUMMARY"
@@ -205,10 +204,10 @@ runs:
             continue
           fi
 
-          # Detailed Maven analysis path.
-          if ( [ "$IGNORE_PLUGIN_UPDATE_COMMITS" = "true" ] || [ "$IGNORE_TEST_DEPENDENCY_UPDATE_COMMITS" = "true" ] ) && is_pom_only "$CHANGED_FILES"; then
-            if is_skip_worthy_pom_change "$COMMIT"; then
-              echo "| \`${SHORT}\` | ⏭️ Skip | bot plugin/test-dep update |" >> "$GITHUB_STEP_SUMMARY"
+          if ( [ "$IGNORE_PLUGIN_UPDATE_COMMITS" = "true" ] || [ "$IGNORE_TEST_DEPENDENCY_UPDATE_COMMITS" = "true" ] ) \
+              && is_gradle_build_file_only "$CHANGED_FILES"; then
+            if is_skip_worthy_gradle_change "$COMMIT"; then
+              echo "| \`${SHORT}\` | ⏭️ Skip | bot plugin/test-dependency update |" >> "$GITHUB_STEP_SUMMARY"
               continue
             fi
           fi

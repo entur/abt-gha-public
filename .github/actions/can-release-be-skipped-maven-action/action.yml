@@ -1,4 +1,4 @@
-name: Can Release Be Skipped (Maven)
+name: Can Release Be Skipped (Maven) Action
 description: |
   Evaluates bot commits on the given branch since the last release tag and
   outputs whether the release can be skipped.
