@@ -1,5 +1,5 @@
 name: Maybe release bot updates - Maven
-# Delegates commit evaluation to the check-should-release-maven action and
+# Delegates commit evaluation to the can-release-be-skipped-maven action and
 # optionally dispatches the target workflow when a release is warranted.
 on:
   workflow_call:
