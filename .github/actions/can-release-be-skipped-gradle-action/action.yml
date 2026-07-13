@@ -114,6 +114,8 @@ runs:
             extract_gradle_artifacts "$gradle_output" > "$test_deps_file"
           fi
 
+          # Extract main (runtime) deps whenever either ignore flag is active: main deps
+          # are always checked as a guard, regardless of which flag triggered analysis.
           if [ "$IGNORE_PLUGIN_UPDATE_COMMITS" = "true" ] || [ "$IGNORE_TEST_DEPENDENCY_UPDATE_COMMITS" = "true" ]; then
             ./gradlew -q dependencies --configuration runtimeClasspath > "$gradle_output" 2>&1
             extract_gradle_artifacts "$gradle_output" > "$main_deps_file"

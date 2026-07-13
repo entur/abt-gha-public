@@ -98,6 +98,8 @@ runs:
             ' "$mvn_output" | sort -u > "$plugins_file"
           fi
 
+          # Run dependency:resolve whenever either ignore flag is active: main deps are
+          # always extracted as a guard check, and test deps are extracted when needed.
           if [ "$IGNORE_TEST_DEPENDENCY_UPDATE_COMMITS" = "true" ] || [ "$IGNORE_PLUGIN_UPDATE_COMMITS" = "true" ]; then
             mvn -B dependency:resolve > "$mvn_output" 2>&1
             local all_deps
