@@ -147,6 +147,8 @@ runs:
           diff "$before_test_deps" "$after_test_deps" > /dev/null 2>&1 || test_deps_changed=true
           diff "$before_main_deps" "$after_main_deps" > /dev/null 2>&1 || main_deps_changed=true
 
+          # Main dependency changes always make a commit non-skip-worthy,
+          # regardless of plugin or test dependency changes.
           if [ "$main_deps_changed" = "true" ]; then
             return 1
           fi

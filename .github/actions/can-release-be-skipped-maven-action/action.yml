@@ -100,21 +100,8 @@ runs:
 
           if [ "$IGNORE_TEST_DEPENDENCY_UPDATE_COMMITS" = "true" ] || [ "$IGNORE_PLUGIN_UPDATE_COMMITS" = "true" ]; then
             mvn -B dependency:resolve > "$mvn_output" 2>&1
-            if [ "$IGNORE_TEST_DEPENDENCY_UPDATE_COMMITS" = "true" ]; then
-              awk '
-                /The following files have been resolved:/ { flag=1; next }
-                flag && /----------/ { flag=0 }
-                flag {
-                  clean_line = $0
-                  sub(/^[[:space:]]*(\[INFO\])?[[:space:]]*/, "", clean_line)
-                  sub(/[[:space:]\r]+$/, "", clean_line)
-                  if (clean_line ~ /:test([[:space:]]|$)/) {
-                    sub(/[[:space:]]*--[[:space:]]*module.*$/, "", clean_line)
-                    print clean_line
-                  }
-                }
-              ' "$mvn_output" | sort -u > "$test_deps_file"
-            fi
+            local all_deps
+            all_deps=$(mktemp)
             awk '
               /The following files have been resolved:/ { flag=1; next }
               flag && /----------/ { flag=0 }
@@ -122,12 +109,14 @@ runs:
                 clean_line = $0
                 sub(/^[[:space:]]*(\[INFO\])?[[:space:]]*/, "", clean_line)
                 sub(/[[:space:]\r]+$/, "", clean_line)
-                if (clean_line != "" && !(clean_line ~ /:test([[:space:]]|$)/)) {
-                  sub(/[[:space:]]*--[[:space:]]*module.*$/, "", clean_line)
-                  print clean_line
-                }
+                sub(/[[:space:]]*--[[:space:]]*module.*$/, "", clean_line)
+                if (clean_line != "") print clean_line
               }
-            ' "$mvn_output" | sort -u > "$main_deps_file"
+            ' "$mvn_output" | sort -u > "$all_deps"
+            if [ "$IGNORE_TEST_DEPENDENCY_UPDATE_COMMITS" = "true" ]; then
+              grep -E ':test([[:space:]]|$)' "$all_deps" | sort -u > "$test_deps_file" || true
+            fi
+            grep -vE ':test([[:space:]]|$)' "$all_deps" | sort -u > "$main_deps_file" || true
           fi
         }
 
@@ -158,6 +147,8 @@ runs:
           diff "$before_test_deps" "$after_test_deps" > /dev/null 2>&1 || test_deps_changed=true
           diff "$before_main_deps" "$after_main_deps" > /dev/null 2>&1 || main_deps_changed=true
 
+          # Main dependency changes always make a commit non-skip-worthy,
+          # regardless of plugin or test dependency changes.
           if [ "$main_deps_changed" = "true" ]; then
             return 1
           fi
