@@ -92,7 +92,7 @@ jobs:
 
       - name: Check if release can be skipped
         id: check
-        uses: entur/abt-gha-public/actions/can-release-be-skipped-maven-action@reduceMavenReleases
+        uses: entur/abt-gha-public/.github/actions/can-release-be-skipped-maven-action@reduceMavenReleases
         with:
           release-branch: ${{ inputs.release-branch }}
           release-prefix: ${{ inputs.release-prefix }}
