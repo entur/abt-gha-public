@@ -19,7 +19,7 @@ inputs:
   release-prefix:
     description: Prefix used for release tags.
     required: false
-    default: "v"
+    default: "release-"
   bot-name:
     description: Git author name of the bot whose commits are evaluated.
     required: false
