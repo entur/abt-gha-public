@@ -135,7 +135,7 @@ jobs:
   post-to-slack-if-dispatched:
     needs: check-and-trigger
     if: success() && needs.check-and-trigger.outputs.dispatched == 'true' && inputs.channel-id != 'NO_ID'
-    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    uses: entur/gha-slack/.github/workflows/post.yml@v3.1.2
     with:
       channel_id: ${{ inputs.channel-id }}
       message: |
@@ -146,7 +146,7 @@ jobs:
   post-fail-to-slack-if-fail:
     needs: check-and-trigger
     if: failure() && inputs.channel-id != 'NO_ID'
-    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    uses: entur/gha-slack/.github/workflows/post.yml@v3.1.2
     with:
       channel_id: ${{ inputs.channel-id }}
       message: "⚫ ${{ github.repository }} - Trigger missed dependabot deploy failed on ${{ inputs.target-ref }}"

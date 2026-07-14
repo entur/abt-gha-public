@@ -127,7 +127,7 @@ jobs:
     needs: validate-maven-build
     if: failure() && inputs.channel-id != 'NO_ID' && github.event.pull_request.user.login != 'dependabot[bot]'
 
-    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    uses: entur/gha-slack/.github/workflows/post.yml@v3.1.2
     with:
       channel_id: ${{ inputs.channel-id }}
       message: "🟡 PR build failed for '${{ github.event.pull_request.title }}' - ${{ github.server_url }}/${{ github.repository }}/pull/${{ github.event.number }}"

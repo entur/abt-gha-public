@@ -117,7 +117,7 @@ jobs:
     name: Notify Git Diff
     needs: [git-diff-url, tf-plan]
     if: ${{ inputs.notify-changelog && needs.git-diff-url.outputs.compare_url != '' }}
-    uses: entur/gha-slack/.github/workflows/post.yml@v3
+    uses: entur/gha-slack/.github/workflows/post.yml@v3.1.2
     with:
       channel_id: ${{ inputs.channel-id }}
       message: ${{ needs.git-diff-url.outputs.slack_message }}

@@ -63,7 +63,7 @@ jobs:
   post-success-to-slack:
     needs: docker-push
     if: success() && inputs.channel-id != ''
-    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    uses: entur/gha-slack/.github/workflows/post.yml@v3.1.2
     with:
       channel_id: ${{ inputs.channel-id }}
       message: "🟢 Image deploy success, requested by ${{ github.actor }}\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
@@ -80,7 +80,7 @@ jobs:
   post-failure-to-slack:
     needs: docker-push
     if: failure() && inputs.channel-id != ''
-    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    uses: entur/gha-slack/.github/workflows/post.yml@v3.1.2
     with:
       channel_id: ${{ inputs.channel-id }}
       message: "🔴 Image deploy failed, requested by ${{ github.actor }}\n${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"

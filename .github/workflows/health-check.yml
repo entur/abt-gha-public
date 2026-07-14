@@ -49,7 +49,7 @@ jobs:
   post-dependabot-health:
     needs: dependabot-open-pr-check
     if: success() && !contains(needs.dependabot-open-pr-check.outputs.message,'no_message') && inputs.channel-id != 'NO_ID'
-    uses: entur/gha-slack/.github/workflows/post.yml@v2
+    uses: entur/gha-slack/.github/workflows/post.yml@v3.1.2
     with:
       channel_id: ${{ inputs.channel-id }}
       message: "${{ needs.health-check.outputs.message }}"
