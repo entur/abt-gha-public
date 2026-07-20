@@ -1,0 +1,84 @@
+# Reusable workflow: downloads a caller-uploaded artifact and copies one file to a GCS bucket.
+# Auth uses the caller repo's CI_WORKLOAD_IDENTITY_PROVIDER / CI_SERVICE_ACCOUNT vars.
+
+name: Upload File To Bucket
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: Name of the artifact (uploaded by the caller) that contains the file to upload.
+        required: true
+        type: string
+      source-file:
+        description: Path of the file to upload, relative to the root of the downloaded artifact.
+        required: true
+        type: string
+      bucket:
+        description: Target GCS bucket name, without the gs:// prefix (e.g. "ent-gcs-tfa-abtcore").
+        required: true
+        type: string
+      destination:
+        description: Object path within the bucket (e.g. "descriptors/abt-core-service-2.1132.pb.b64").
+        required: true
+        type: string
+      environment:
+        description: GitHub environment name passed to the cloud-auth action (identity comes from the CI vars).
+        required: false
+        type: string
+        default: dev
+      overwrite:
+        description: If false (default), skip the upload when the destination object already exists. Set true to always overwrite.
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  upload:
+    name: Upload to bucket
+    runs-on: ubuntu-24.04
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: artifact
+
+      - name: Verify source file exists
+        shell: bash
+        env:
+          SOURCE_FILE: ${{ inputs.source-file }}
+        run: |
+          if [ ! -f "artifact/${SOURCE_FILE}" ]; then
+            echo "::error::Source file 'artifact/${SOURCE_FILE}' not found in artifact '${{ inputs.artifact-name }}'."
+            echo "Contents of the downloaded artifact:"
+            find artifact -type f || true
+            exit 1
+          fi
+
+      - name: Authenticate with Google Cloud
+        uses: entur/gha-meta/.github/actions/cloud-auth@v1
+        with:
+          environment: ${{ inputs.environment }}
+          cloud_provider: gcp
+          gcp_workload_identity_provider: ${{ vars.CI_WORKLOAD_IDENTITY_PROVIDER }}
+          gcp_service_account: ${{ vars.CI_SERVICE_ACCOUNT }}
+
+      - name: Upload to bucket
+        shell: bash
+        env:
+          SOURCE_FILE: ${{ inputs.source-file }}
+          BUCKET: ${{ inputs.bucket }}
+          DESTINATION: ${{ inputs.destination }}
+          OVERWRITE: ${{ inputs.overwrite }}
+        run: |
+          TARGET="gs://${BUCKET}/${DESTINATION}"
+          if [ "${OVERWRITE}" != "true" ] && gcloud storage objects describe "${TARGET}" >/dev/null 2>&1; then
+            echo ":information_source: Object ${TARGET} already exists and overwrite=false — skipping upload." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          gcloud storage cp "artifact/${SOURCE_FILE}" "${TARGET}"
+          echo ":white_check_mark: Uploaded \`${SOURCE_FILE}\` to \`${TARGET}\`" >> "$GITHUB_STEP_SUMMARY"
