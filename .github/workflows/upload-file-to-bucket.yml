@@ -75,6 +75,8 @@ jobs:
           DESTINATION: ${{ inputs.destination }}
           OVERWRITE: ${{ inputs.overwrite }}
         run: |
+          : "${BUCKET:?bucket input is empty, check the caller variable}"
+          : "${DESTINATION:?destination input is empty}"
           TARGET="gs://${BUCKET}/${DESTINATION}"
           if [ "${OVERWRITE}" != "true" ] && gcloud storage objects describe "${TARGET}" >/dev/null 2>&1; then
             echo ":information_source: Object ${TARGET} already exists and overwrite=false — skipping upload." >> "$GITHUB_STEP_SUMMARY"
