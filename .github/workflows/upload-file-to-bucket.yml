@@ -22,11 +22,6 @@ on:
         description: Object path within the bucket (e.g. "descriptors/abt-core-service-2.1132.pb.b64").
         required: true
         type: string
-      environment:
-        description: GitHub environment name passed to the cloud-auth action (identity comes from the CI vars).
-        required: false
-        type: string
-        default: dev
       overwrite:
         description: If false (default), skip the upload when the destination object already exists. Set true to always overwrite.
         required: false
@@ -62,7 +57,8 @@ jobs:
       - name: Authenticate with Google Cloud
         uses: entur/gha-meta/.github/actions/cloud-auth@v1
         with:
-          environment: ${{ inputs.environment }}
+          # Required by cloud-auth but unused for GCP; identity comes from the CI vars below.
+          environment: dev
           cloud_provider: gcp
           gcp_workload_identity_provider: ${{ vars.CI_WORKLOAD_IDENTITY_PROVIDER }}
           gcp_service_account: ${{ vars.CI_SERVICE_ACCOUNT }}
