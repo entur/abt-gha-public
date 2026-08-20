@@ -1,5 +1,5 @@
 name: Maybe release bot updates - Gradle
-# Delegates commit evaluation to the can-release-be-skipped-gradle action and
+# Delegates commit evaluation to the has-bot-updated-runtime-dependencies-gradle-action and
 # optionally dispatches the target workflow when a release is warranted.
 on:
   workflow_call:
@@ -85,9 +85,9 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
 
-      - name: Check if release can be skipped
+      - name: Check if runtime dependencies have been updated
         id: check
-        uses: entur/abt-gha-public/.github/actions/can-release-be-skipped-gradle-action@reduceMavenReleases
+        uses: entur/abt-gha-public/.github/actions/has-bot-updated-runtime-dependencies-gradle-action@reduceMavenReleases
         with:
           release-branch: ${{ inputs.release-branch }}
           release-prefix: ${{ inputs.release-prefix }}
@@ -97,7 +97,7 @@ jobs:
 
       - name: Dispatch release workflow
         id: dispatch
-        if: steps.check.outputs.skip == 'false' && inputs.trigger-release == true
+        if: steps.check.outputs.updated == 'true' && inputs.trigger-release == true
         env:
           GH_TOKEN: ${{ github.token }}
         run: |
@@ -108,11 +108,11 @@ jobs:
         id: result
         if: always()
         env:
-          SKIP: ${{ steps.check.outputs.skip }}
+          UPDATED: ${{ steps.check.outputs.updated }}
           REASON: ${{ steps.check.outputs.reason }}
           DISPATCHED: ${{ steps.dispatch.outputs.dispatched || 'false' }}
         run: |
-          if [ "$SKIP" = "false" ]; then
+          if [ "$UPDATED" = "true" ]; then
             echo "should-release=true" >> "$GITHUB_OUTPUT"
           else
             echo "should-release=false" >> "$GITHUB_OUTPUT"
