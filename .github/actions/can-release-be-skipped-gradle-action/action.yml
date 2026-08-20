@@ -1,0 +1,243 @@
+name: Can Release Be Skipped (Gradle) Action
+description: |
+  Evaluates bot commits on the given branch since the last release tag and
+  outputs whether the release can be skipped.
+
+  Returns skip=true when all bot commits since the last tag are skip-worthy
+  according to the enabled rules. Returns skip=false when at least one bot
+  commit warrants a release. Non-bot commits are intentionally ignored —
+  they are expected to be handled by normal push triggers.
+
+  Requires: the repository must already be checked out with full history
+  (fetch-depth: 0, fetch-tags: true), and the Gradle wrapper must be present.
+
+inputs:
+  release-branch:
+    description: Branch tip to evaluate commits on.
+    required: false
+    default: main
+  release-prefix:
+    description: Prefix used for release tags.
+    required: false
+    default: "release-"
+  bot-name:
+    description: Git author name of the bot whose commits are evaluated.
+    required: false
+    default: "dependabot[bot]"
+  ignore-plugin-update-commits:
+    description: >
+      Treat bot commits that only update Gradle plugins as skip-worthy.
+      Uses ./gradlew buildEnvironment to compare the plugin classpath before
+      and after the commit.
+    required: false
+    default: "true"
+  ignore-test-dependency-update-commits:
+    description: >
+      Treat bot commits that only update test-scoped dependencies as
+      skip-worthy. Uses ./gradlew dependencies --configuration
+      testRuntimeClasspath to compare the test dependency graph before and
+      after the commit.
+    required: false
+    default: "true"
+
+outputs:
+  skip:
+    description: "'true' if the release can be skipped, 'false' if a release is necessary."
+    value: ${{ steps.evaluate.outputs.skip }}
+  reason:
+    description: Human-readable explanation of the decision.
+    value: ${{ steps.evaluate.outputs.reason }}
+
+runs:
+  using: composite
+  steps:
+    - name: Evaluate commits since last release tag
+      id: evaluate
+      shell: bash
+      env:
+        RELEASE_BRANCH: ${{ inputs.release-branch }}
+        RELEASE_PREFIX: ${{ inputs.release-prefix }}
+        BOT_NAME: ${{ inputs.bot-name }}
+        IGNORE_PLUGIN_UPDATE_COMMITS: ${{ inputs.ignore-plugin-update-commits }}
+        IGNORE_TEST_DEPENDENCY_UPDATE_COMMITS: ${{ inputs.ignore-test-dependency-update-commits }}
+      run: |
+        set -euo pipefail
+
+        # ── Helpers ──────────────────────────────────────────────────────────────
+
+        # Returns true when every changed file is a Gradle build file at any depth.
+        is_gradle_build_file_only() {
+          local non_gradle
+          non_gradle=$(echo "$1" \
+            | grep -v '\.gradle$' \
+            | grep -v '\.gradle\.kts$' \
+            | grep -v 'libs\.versions\.toml$' \
+            | grep -v 'gradle-wrapper\.properties$' \
+            || true)
+          [ -z "$non_gradle" ]
+        }
+
+        # Extracts unique artifact coordinates (group:artifact:version) from
+        # Gradle's dependency tree output (handles +---, \---, | and -> notation).
+        extract_gradle_artifacts() {
+          awk '
+            /[+\\]--- / {
+              line = $0
+              sub(/^[[:space:]]*[+\\|]--- /, "", line)
+              sub(/ -> .*$/, "", line)
+              sub(/ \(.*\)$/, "", line)
+              sub(/[[:space:]]*$/, "", line)
+              if (line ~ /^[^[:space:]]+:[^[:space:]]+:[^[:space:]]+$/) print line
+            }
+          ' "$1" | sort -u
+        }
+
+        # Runs Gradle analysis for the given commit, writing sorted artifact lists
+        # to the supplied files.
+        run_analysis() {
+          local target_commit=$1
+          local plugins_file=$2
+          local test_deps_file=$3
+          local main_deps_file=$4
+          local gradle_output
+          gradle_output=$(mktemp)
+
+          git checkout -q "$target_commit"
+
+          if [ "$IGNORE_PLUGIN_UPDATE_COMMITS" = "true" ]; then
+            ./gradlew -q buildEnvironment > "$gradle_output" 2>&1
+            extract_gradle_artifacts "$gradle_output" > "$plugins_file"
+          fi
+
+          if [ "$IGNORE_TEST_DEPENDENCY_UPDATE_COMMITS" = "true" ]; then
+            ./gradlew -q dependencies --configuration testRuntimeClasspath > "$gradle_output" 2>&1
+            extract_gradle_artifacts "$gradle_output" > "$test_deps_file"
+          fi
+
+          # Always extract main (runtime) dependencies as a guard: a commit is only
+          # skip-worthy if main deps are unchanged, regardless of which ignore flag fired.
+          ./gradlew -q dependencies --configuration runtimeClasspath > "$gradle_output" 2>&1
+          extract_gradle_artifacts "$gradle_output" > "$main_deps_file"
+        }
+
+        # Runs full before/after Gradle analysis for a commit and returns 0 when
+        # the commit qualifies as skip-worthy under the active ignore flags.
+        is_skip_worthy_gradle_change() {
+          local commit=$1
+          local original_ref
+          original_ref=$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse HEAD)
+          trap 'git checkout -q "$original_ref"' EXIT
+
+          local before_plugins after_plugins before_test_deps after_test_deps before_main_deps after_main_deps
+          before_plugins=$(mktemp)
+          after_plugins=$(mktemp)
+          before_test_deps=$(mktemp)
+          after_test_deps=$(mktemp)
+          before_main_deps=$(mktemp)
+          after_main_deps=$(mktemp)
+
+          run_analysis "$commit"    "$after_plugins"  "$after_test_deps"  "$after_main_deps"
+          run_analysis "${commit}^" "$before_plugins" "$before_test_deps" "$before_main_deps"
+
+          git checkout -q "$original_ref"
+          trap - EXIT
+
+          local plugins_changed=false test_deps_changed=false main_deps_changed=false
+          diff "$before_plugins"   "$after_plugins"   > /dev/null 2>&1 || plugins_changed=true
+          diff "$before_test_deps" "$after_test_deps" > /dev/null 2>&1 || test_deps_changed=true
+          diff "$before_main_deps" "$after_main_deps" > /dev/null 2>&1 || main_deps_changed=true
+
+          # Main dependency changes always make a commit non-skip-worthy,
+          # regardless of plugin or test dependency changes.
+          if [ "$main_deps_changed" = "true" ]; then
+            return 1
+          fi
+          if [ "$IGNORE_PLUGIN_UPDATE_COMMITS" = "true" ] && [ "$plugins_changed" = "true" ]; then
+            return 0
+          fi
+          if [ "$IGNORE_TEST_DEPENDENCY_UPDATE_COMMITS" = "true" ] && [ "$test_deps_changed" = "true" ]; then
+            return 0
+          fi
+          return 1
+        }
+
+        # ── Find branch tip and latest release tag ────────────────────────────────
+
+        echo "## Can Release Be Skipped (Gradle)" >> "$GITHUB_STEP_SUMMARY"
+
+        BRANCH_TIP=$(git rev-parse "${RELEASE_BRANCH}")
+        echo "**Branch:** \`${RELEASE_BRANCH}\` @ \`${BRANCH_TIP:0:8}\`" >> "$GITHUB_STEP_SUMMARY"
+
+        LATEST_TAG=$(git describe --tags --match "${RELEASE_PREFIX}*" --abbrev=0 "${BRANCH_TIP}" 2>/dev/null || echo "")
+
+        if [ -z "$LATEST_TAG" ]; then
+          echo "**No release tag found** — cannot skip release." >> "$GITHUB_STEP_SUMMARY"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "reason=no release tag found; cannot skip release" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        echo "**Latest release tag:** \`${LATEST_TAG}\`" >> "$GITHUB_STEP_SUMMARY"
+
+        RELEASE_HASH=$(git rev-list -n 1 "${LATEST_TAG}")
+        COMMITS=$(git log --format="%H" "${RELEASE_HASH}..${BRANCH_TIP}")
+
+        if [ -z "$COMMITS" ]; then
+          echo "**No commits since \`${LATEST_TAG}\`** — release can be skipped." >> "$GITHUB_STEP_SUMMARY"
+          echo "skip=true" >> "$GITHUB_OUTPUT"
+          echo "reason=no commits since ${LATEST_TAG}" >> "$GITHUB_OUTPUT"
+          exit 0
+        fi
+
+        COMMIT_COUNT=$(echo "$COMMITS" | wc -l | xargs)
+        echo "**Commits since \`${LATEST_TAG}\`:** ${COMMIT_COUNT}" >> "$GITHUB_STEP_SUMMARY"
+        echo ""                                 >> "$GITHUB_STEP_SUMMARY"
+        echo "| Commit | Decision | Reason |"  >> "$GITHUB_STEP_SUMMARY"
+        echo "|--------|----------|--------|"  >> "$GITHUB_STEP_SUMMARY"
+
+        # ── Evaluate each commit ──────────────────────────────────────────────────
+
+        NEEDS_RELEASE=false
+
+        while IFS= read -r COMMIT; do
+          SHORT="${COMMIT:0:8}"
+          AUTHOR=$(git show -s --format=%aN "$COMMIT")
+          MSG=$(git show -s --format=%s "$COMMIT")
+
+          # Non-bot commits are ignored: they are expected to be released by normal
+          # push triggers, not by this bot-focused check.
+          if [ "$AUTHOR" != "$BOT_NAME" ]; then
+            echo "| \`${SHORT}\` | ⏭️ Ignore | non-bot commit (${AUTHOR}) |" >> "$GITHUB_STEP_SUMMARY"
+            continue
+          fi
+
+          CHANGED_FILES=$(git diff --name-only "${COMMIT}^" "$COMMIT" 2>/dev/null || true)
+
+          if [ -z "$CHANGED_FILES" ]; then
+            echo "| \`${SHORT}\` | ⏭️ Ignore | empty commit |" >> "$GITHUB_STEP_SUMMARY"
+            continue
+          fi
+
+          if ( [ "$IGNORE_PLUGIN_UPDATE_COMMITS" = "true" ] || [ "$IGNORE_TEST_DEPENDENCY_UPDATE_COMMITS" = "true" ] ) \
+              && is_gradle_build_file_only "$CHANGED_FILES"; then
+            if is_skip_worthy_gradle_change "$COMMIT"; then
+              echo "| \`${SHORT}\` | ⏭️ Skip | bot plugin/test-dependency update |" >> "$GITHUB_STEP_SUMMARY"
+              continue
+            fi
+          fi
+
+          echo "| \`${SHORT}\` | 🚀 Release | ${MSG} |" >> "$GITHUB_STEP_SUMMARY"
+          NEEDS_RELEASE=true
+        done <<< "$COMMITS"
+
+        echo "" >> "$GITHUB_STEP_SUMMARY"
+
+        if [ "$NEEDS_RELEASE" = "false" ]; then
+          echo "**Decision: ⏭️ Release can be skipped.**" >> "$GITHUB_STEP_SUMMARY"
+          echo "skip=true" >> "$GITHUB_OUTPUT"
+          echo "reason=all bot commits since ${LATEST_TAG} are skip-worthy" >> "$GITHUB_OUTPUT"
+        else
+          echo "**Decision: 🚀 Release is necessary.**" >> "$GITHUB_STEP_SUMMARY"
+          echo "skip=false" >> "$GITHUB_OUTPUT"
+          echo "reason=release-worthy bot commits found since ${LATEST_TAG}" >> "$GITHUB_OUTPUT"
+        fi
