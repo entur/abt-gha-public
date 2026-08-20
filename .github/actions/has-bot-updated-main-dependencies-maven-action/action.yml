@@ -27,16 +27,16 @@ inputs:
     default: "dependabot[bot]"
   ignore-plugin-update-commits:
     description: >
-      Treat bot commits that only update Maven plugins as skip-worthy.
-      Requires Maven to resolve and compare the plugin list before and after
-      the commit.
+      Do not count bot commits that only update Maven plugins as main
+      dependency updates. Requires Maven to resolve and compare the plugin
+      list before and after the commit.
     required: false
     default: "true"
   ignore-test-dependency-update-commits:
     description: >
-      Treat bot commits that only update test-scoped dependencies as
-      skip-worthy. Requires Maven to resolve and compare dependencies before
-      and after the commit.
+      Do not count bot commits that only update test-scoped dependencies as
+      main dependency updates. Requires Maven to resolve and compare
+      dependencies before and after the commit.
     required: false
     default: "true"
 
@@ -131,7 +131,7 @@ runs:
 
         # Runs full before/after Maven analysis for a commit and returns 0 when
         # the commit qualifies as skip-worthy under the active skip flags.
-        is_skip_worthy_pom_change() {
+        is_only_plugin_or_test_dep_change() {
           local commit=$1
           local original_ref
           original_ref=$(git symbolic-ref --short HEAD 2>/dev/null || git rev-parse HEAD)
@@ -229,7 +229,7 @@ runs:
 
           # Detailed Maven analysis path.
           if ( [ "$IGNORE_PLUGIN_UPDATE_COMMITS" = "true" ] || [ "$IGNORE_TEST_DEPENDENCY_UPDATE_COMMITS" = "true" ] ) && is_pom_only "$CHANGED_FILES"; then
-            if is_skip_worthy_pom_change "$COMMIT"; then
+            if is_only_plugin_or_test_dep_change "$COMMIT"; then
               echo "| \`${SHORT}\` | ⏭️ Skip | bot plugin/test-dep update |" >> "$GITHUB_STEP_SUMMARY"
               continue
             fi
