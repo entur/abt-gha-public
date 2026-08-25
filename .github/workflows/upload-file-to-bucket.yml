@@ -33,6 +33,11 @@ on:
         required: false
         type: boolean
         default: false
+      set-custom-time:
+        description: Stamp the uploaded object with a Custom-Time of the upload moment, so a bucket lifecycle rule keyed on days_since_custom_time can expire it.
+        required: false
+        type: boolean
+        default: false
 
 jobs:
   upload:
@@ -76,6 +81,7 @@ jobs:
           BUCKET: ${{ inputs.bucket }}
           DESTINATION: ${{ inputs.destination }}
           OVERWRITE: ${{ inputs.overwrite }}
+          SET_CUSTOM_TIME: ${{ inputs.set-custom-time }}
         run: |
           : "${BUCKET:?bucket input is empty, check the caller variable}"
           : "${DESTINATION:?destination input is empty}"
@@ -84,5 +90,9 @@ jobs:
             echo ":information_source: Object ${TARGET} already exists and overwrite=false — skipping upload." >> "$GITHUB_STEP_SUMMARY"
             exit 0
           fi
-          gcloud storage cp "artifact/${SOURCE_FILE}" "${TARGET}"
+          CP_ARGS=()
+          if [ "${SET_CUSTOM_TIME}" = "true" ]; then
+            CP_ARGS+=(--custom-time="$(date -u +%Y-%m-%dT%H:%M:%SZ)")
+          fi
+          gcloud storage cp "${CP_ARGS[@]}" "artifact/${SOURCE_FILE}" "${TARGET}"
           echo ":white_check_mark: Uploaded \`${SOURCE_FILE}\` to \`${TARGET}\`" >> "$GITHUB_STEP_SUMMARY"
