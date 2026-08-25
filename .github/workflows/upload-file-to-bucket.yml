@@ -1,5 +1,7 @@
 # Reusable workflow: downloads a caller-uploaded artifact and copies one file to a GCS bucket.
-# Auth uses the caller repo's CI_WORKLOAD_IDENTITY_PROVIDER / CI_SERVICE_ACCOUNT vars.
+# Runs in the caller's `environment` and authenticates as that environment's deploy service account
+# (vars.SERVICE_ACCOUNT / vars.WORKLOAD_IDENTITY_PROVIDER), so it can write to buckets in the app
+# project — e.g. a descriptor an environment's Terraform apply later reads back as the same SA.
 
 name: Upload File To Bucket
 
@@ -15,11 +17,15 @@ on:
         required: true
         type: string
       bucket:
-        description: Target GCS bucket name, without the gs:// prefix (e.g. "ent-gcs-tfa-abtcore").
+        description: Target GCS bucket name, without the gs:// prefix (e.g. "ent-gcs-abtcore-dev-001").
         required: true
         type: string
       destination:
         description: Object path within the bucket (e.g. "descriptors/abt-core-service-2.1132.pb.b64").
+        required: true
+        type: string
+      environment:
+        description: GitHub environment to run in; the job authenticates as this environment's deploy service account (vars.SERVICE_ACCOUNT).
         required: true
         type: string
       overwrite:
@@ -32,6 +38,7 @@ jobs:
   upload:
     name: Upload to bucket
     runs-on: ubuntu-24.04
+    environment: ${{ inputs.environment }}
     permissions:
       contents: read
       id-token: write
@@ -57,11 +64,10 @@ jobs:
       - name: Authenticate with Google Cloud
         uses: entur/gha-meta/.github/actions/cloud-auth@v1
         with:
-          # Required by cloud-auth but unused for GCP; identity comes from the CI vars below.
-          environment: dev
+          environment: ${{ inputs.environment }}
           cloud_provider: gcp
-          gcp_workload_identity_provider: ${{ vars.CI_WORKLOAD_IDENTITY_PROVIDER }}
-          gcp_service_account: ${{ vars.CI_SERVICE_ACCOUNT }}
+          gcp_workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          gcp_service_account: ${{ vars.SERVICE_ACCOUNT }}
 
       - name: Upload to bucket
         shell: bash
