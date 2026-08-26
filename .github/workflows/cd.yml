@@ -16,9 +16,10 @@ on:
         required: true
         type: string
       channel-id:
-        description: Slack channel ID for deployment notifications
-        required: true
+        description: Slack channel ID for deployment notifications (only used when notify-changelog is true; leave unset to disable Slack)
+        required: false
         type: string
+        default: ""
       container-name:
         description: "Replace the image of a named container in the common.containers array. Resolves the array index automatically using the container name in values.yaml"
         required: false
@@ -116,7 +117,7 @@ jobs:
   notify-diff:
     name: Notify Git Diff
     needs: [git-diff-url, tf-plan]
-    if: ${{ inputs.notify-changelog && needs.git-diff-url.outputs.compare_url != '' }}
+    if: ${{ inputs.notify-changelog && inputs.channel-id != '' && needs.git-diff-url.outputs.compare_url != '' }}
     uses: entur/gha-slack/.github/workflows/post.yml@v3
     with:
       channel_id: ${{ inputs.channel-id }}
