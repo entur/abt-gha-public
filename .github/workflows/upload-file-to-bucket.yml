@@ -1,0 +1,98 @@
+# Reusable workflow: downloads a caller-uploaded artifact and copies one file to a GCS bucket.
+# Runs in the caller's `environment` and authenticates as that environment's deploy service account
+# (vars.SERVICE_ACCOUNT / vars.WORKLOAD_IDENTITY_PROVIDER), so it can write to buckets in the app
+# project — e.g. a descriptor an environment's Terraform apply later reads back as the same SA.
+
+name: Upload File To Bucket
+
+on:
+  workflow_call:
+    inputs:
+      artifact-name:
+        description: Name of the artifact (uploaded by the caller) that contains the file to upload.
+        required: true
+        type: string
+      source-file:
+        description: Path of the file to upload, relative to the root of the downloaded artifact.
+        required: true
+        type: string
+      bucket:
+        description: Target GCS bucket name, without the gs:// prefix (e.g. "ent-gcs-abtcore-dev-001").
+        required: true
+        type: string
+      destination:
+        description: Object path within the bucket (e.g. "descriptors/abt-core-service-2.1132.pb.b64").
+        required: true
+        type: string
+      environment:
+        description: GitHub environment to run in; the job authenticates as this environment's deploy service account (vars.SERVICE_ACCOUNT).
+        required: true
+        type: string
+      overwrite:
+        description: If false (default), skip the upload when the destination object already exists. Set true to always overwrite.
+        required: false
+        type: boolean
+        default: false
+      set-custom-time:
+        description: Stamp the uploaded object with a Custom-Time of the upload moment, so a bucket lifecycle rule keyed on days_since_custom_time can expire it.
+        required: false
+        type: boolean
+        default: false
+
+jobs:
+  upload:
+    name: Upload to bucket
+    runs-on: ubuntu-24.04
+    environment: ${{ inputs.environment }}
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - name: Download artifact
+        uses: actions/download-artifact@3e5f45b2cfb9172054b4087a40e8e0b5a5461e7c # v8.0.1
+        with:
+          name: ${{ inputs.artifact-name }}
+          path: artifact
+
+      - name: Verify source file exists
+        shell: bash
+        env:
+          SOURCE_FILE: ${{ inputs.source-file }}
+        run: |
+          if [ ! -f "artifact/${SOURCE_FILE}" ]; then
+            echo "::error::Source file 'artifact/${SOURCE_FILE}' not found in artifact '${{ inputs.artifact-name }}'."
+            echo "Contents of the downloaded artifact:"
+            find artifact -type f || true
+            exit 1
+          fi
+
+      - name: Authenticate with Google Cloud
+        uses: entur/gha-meta/.github/actions/cloud-auth@v1
+        with:
+          environment: ${{ inputs.environment }}
+          cloud_provider: gcp
+          gcp_workload_identity_provider: ${{ vars.WORKLOAD_IDENTITY_PROVIDER }}
+          gcp_service_account: ${{ vars.SERVICE_ACCOUNT }}
+
+      - name: Upload to bucket
+        shell: bash
+        env:
+          SOURCE_FILE: ${{ inputs.source-file }}
+          BUCKET: ${{ inputs.bucket }}
+          DESTINATION: ${{ inputs.destination }}
+          OVERWRITE: ${{ inputs.overwrite }}
+          SET_CUSTOM_TIME: ${{ inputs.set-custom-time }}
+        run: |
+          : "${BUCKET:?bucket input is empty, check the caller variable}"
+          : "${DESTINATION:?destination input is empty}"
+          TARGET="gs://${BUCKET}/${DESTINATION}"
+          if [ "${OVERWRITE}" != "true" ] && gcloud storage objects describe "${TARGET}" >/dev/null 2>&1; then
+            echo ":information_source: Object ${TARGET} already exists and overwrite=false — skipping upload." >> "$GITHUB_STEP_SUMMARY"
+            exit 0
+          fi
+          CP_ARGS=()
+          if [ "${SET_CUSTOM_TIME}" = "true" ]; then
+            CP_ARGS+=(--custom-time="$(date -u +%Y-%m-%dT%H:%M:%SZ)")
+          fi
+          gcloud storage cp "${CP_ARGS[@]}" "artifact/${SOURCE_FILE}" "${TARGET}"
+          echo ":white_check_mark: Uploaded \`${SOURCE_FILE}\` to \`${TARGET}\`" >> "$GITHUB_STEP_SUMMARY"
