@@ -79,7 +79,7 @@ runs:
       run: buf lint
 
     - name: Save Maven repository cache
-      if: success() && steps.maven-cache-restore.outputs.cache-hit != 'true' && inputs.saveCache
+      if: success() && steps.maven-cache-restore.outputs.cache-hit != 'true' && inputs.saveCache == 'true'
       uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
       with:
         path: ~/.m2/repository
