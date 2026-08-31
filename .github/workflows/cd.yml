@@ -43,6 +43,7 @@ jobs:
     permissions:
       deployments: read
       contents: read
+      actions: read
     outputs:
       compare_url: ${{ steps.compare.outputs.compare_url }}
       slack_message: ${{ steps.compare.outputs.slack_message }}
@@ -60,7 +61,7 @@ jobs:
             gh api "repos/${{ github.repository }}/deployments" \
               -X GET \
               -f environment="$ENVIRONMENT" \
-              -f per_page=20 \
+              -f per_page=100 \
               --jq '.[] | "\(.sha) \(.statuses_url)"' | \
             while IFS=' ' read -r sha statuses_url; do
               # Latest status of this deployment: state + the run that created it.
@@ -78,6 +79,19 @@ jobs:
               status_run=${log_url#*/actions/runs/}
               status_run=${status_run%%/*}
               [ "$status_run" = "$GITHUB_RUN_ID" ] && continue
+              # Skip deployments whose creating job opts out of the changelog:
+              # the descriptor upload (upload-file-to-bucket) records a successful
+              # deployment for a commit that is never released to this env, and
+              # tags its job name with [skip-git-diff]. Match the legacy job name
+              # ("Upload to bucket") too, so records created before the tag are
+              # skipped as well. Walk back to the previous real deploy instead.
+              job_id=${log_url##*/job/}
+              job_id=${job_id%%[!0-9]*}
+              if [ -n "$job_id" ]; then
+                job_name=$(gh api "repos/${{ github.repository }}/actions/jobs/$job_id" --jq '.name // ""' 2>/dev/null || true)
+                grep -qF '[skip-git-diff]' <<<"$job_name" && continue
+                grep -qF 'Upload to bucket' <<<"$job_name" && continue
+              fi
               echo "$sha"
               break
             done
