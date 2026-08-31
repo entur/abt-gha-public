@@ -41,7 +41,10 @@ on:
 
 jobs:
   upload:
-    name: Upload to bucket
+    # [skip-git-diff] tags the deployment record GitHub auto-creates for this
+    # environment job so the CD changelog (cd.yml / notify-changelog.yml) skips
+    # it — this uploads a descriptor, it is not an app release to the environment.
+    name: Upload to bucket [skip-git-diff]
     runs-on: ubuntu-24.04
     environment: ${{ inputs.environment }}
     permissions:
