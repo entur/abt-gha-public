@@ -39,7 +39,6 @@ runs:
       with:
         java-version: ${{ inputs.java-version }}
         distribution: liberica
-        cache: maven
         server-id: entur-partner
         server-username: PARTNER_READ_ARTIFACTORY_AUTH_USER
         server-password: PARTNER_READ_ARTIFACTORY_AUTH_TOKEN
