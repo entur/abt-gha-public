@@ -1,0 +1,47 @@
+name: "Partner Gradle Copilot Setup Steps"
+description: >
+  Setup steps for the GitHub Copilot coding agent on partner Gradle apps.
+  Warms the Gradle cache and prepares tooling using read-only credentials.
+
+inputs:
+  java-version:
+    description: "Java Runtime Version"
+    required: false
+    default: "25"
+  artifactory-auth-user:
+    description: "Read-only Artifactory username"
+    required: true
+  artifactory-auth-token:
+    description: "Read-only Artifactory token"
+    required: true
+  setup-buf:
+    description: "Install Buf and lint protobuf definitions"
+    required: false
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      with:
+        persist-credentials: false
+    - name: Set up JDK ${{ inputs.java-version }}
+      uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5.3.0
+      with:
+        java-version: ${{ inputs.java-version }}
+        distribution: liberica
+    - name: Setup Gradle
+      uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2 - do not upgrade to 6 due to licensing issues.
+    - name: Set up Buf
+      if: inputs.setup-buf == 'true'
+      uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99 # v1.50.0
+    - name: Warm Gradle dependencies
+      shell: bash
+      run: ./gradlew build testClasses -x test
+      env:
+        ARTIFACTORY_AUTH_USER: ${{ inputs.artifactory-auth-user }}
+        ARTIFACTORY_AUTH_TOKEN: ${{ inputs.artifactory-auth-token }}
+    - name: Verify Buf configuration
+      if: inputs.setup-buf == 'true'
+      shell: bash
+      run: buf lint

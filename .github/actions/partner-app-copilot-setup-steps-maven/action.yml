@@ -1,0 +1,85 @@
+name: "Partner Maven Copilot Setup Steps"
+description: >
+  Setup steps for the GitHub Copilot coding agent on partner Maven apps.
+  Warms the Maven cache and prepares tooling using read-only credentials.
+
+inputs:
+  java-version:
+    description: "Java Runtime Version"
+    required: false
+    default: "25"
+  artifactory-auth-user:
+    description: "Read-only Artifactory username"
+    required: true
+  artifactory-auth-token:
+    description: "Read-only Artifactory token"
+    required: true
+  build-profiles:
+    description: "Profiles to use for maven build"
+    required: false
+    default: "NO_PROFILE"
+  setup-buf:
+    description: "Install Buf and lint protobuf definitions"
+    required: false
+    default: "false"
+  saveCache:
+    description: "Whether to save the Maven repository cache at the end of the run"
+    required: false
+    default: "false"
+
+runs:
+  using: "composite"
+  steps:
+    - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      with:
+        persist-credentials: false
+
+    - name: Set up Java ${{ inputs.java-version }}
+      uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5.3.0
+      with:
+        java-version: ${{ inputs.java-version }}
+        distribution: liberica
+        server-id: entur-partner
+        server-username: PARTNER_READ_ARTIFACTORY_AUTH_USER
+        server-password: PARTNER_READ_ARTIFACTORY_AUTH_TOKEN
+
+    - name: Restore Maven repository cache
+      id: maven-cache-restore
+      uses: actions/cache/restore@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      with:
+        path: ~/.m2/repository
+        key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-maven-
+
+    - name: Set up Buf
+      if: inputs.setup-buf == 'true'
+      uses: bufbuild/buf-setup-action@a47c93e0b1648d5651a065437926377d060baa99 # v1.50.0
+
+    - name: Warm Maven dependencies (without profile)
+      if: inputs.build-profiles == 'NO_PROFILE'
+      shell: bash
+      run: mvn -B clean -ntp verify -DskipTests
+      env:
+        PARTNER_READ_ARTIFACTORY_AUTH_USER: ${{ inputs.artifactory-auth-user }}
+        PARTNER_READ_ARTIFACTORY_AUTH_TOKEN: ${{ inputs.artifactory-auth-token }}
+
+    - name: Warm Maven dependencies (with profile)
+      if: inputs.build-profiles != 'NO_PROFILE'
+      shell: bash
+      run: mvn -B clean -ntp verify -DskipTests -P${{ inputs.build-profiles }}
+      env:
+        PARTNER_READ_ARTIFACTORY_AUTH_USER: ${{ inputs.artifactory-auth-user }}
+        PARTNER_READ_ARTIFACTORY_AUTH_TOKEN: ${{ inputs.artifactory-auth-token }}
+
+    - name: Verify Buf configuration
+      if: inputs.setup-buf == 'true'
+      shell: bash
+      run: buf lint
+
+    - name: Save Maven repository cache
+      if: success() && steps.maven-cache-restore.outputs.cache-hit != 'true' && inputs.saveCache == 'true'
+      uses: actions/cache/save@27d5ce7f107fe9357f9df03efb73ab90386fccae # v5.0.5
+      with:
+        path: ~/.m2/repository
+        key: ${{ steps.maven-cache-restore.outputs.cache-primary-key }}
