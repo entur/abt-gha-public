@@ -34,11 +34,23 @@ jobs:
               -f per_page=20 \
               --jq '.[] | "\(.sha) \(.statuses_url)"' | \
             while IFS=' ' read -r sha statuses_url; do
-              state=$(gh api "$statuses_url" --jq '.[0].state // empty' 2>/dev/null)
-              if [ "$state" = "success" ]; then
-                echo "$sha"
-                break
-              fi
+              # Latest status of this deployment: state + the run that created it.
+              info=$(gh api "$statuses_url" --jq '.[0] | "\(.state) \(.log_url)"' 2>/dev/null || true)
+              state=${info%% *}
+              log_url=${info#* }
+              [ "$state" = "success" ] || continue
+              # Ignore deployments created by THIS run. A job that declares
+              # environment: <env> (e.g. the descriptor upload via
+              # upload-file-to-bucket) makes GitHub create a deployment for the
+              # current commit before this job runs; its log_url carries our run
+              # id, while a real previous release was deployed by a different run.
+              # Skipping by run (not by SHA) keeps a re-run of an already-released
+              # commit correctly empty.
+              status_run=${log_url#*/actions/runs/}
+              status_run=${status_run%%/*}
+              [ "$status_run" = "$GITHUB_RUN_ID" ] && continue
+              echo "$sha"
+              break
             done
           )
 
