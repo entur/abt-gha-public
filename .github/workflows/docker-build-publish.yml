@@ -48,6 +48,7 @@ jobs:
       build_artifact_name: ${{ inputs.build_artifact_name }}
       build_artifact_path: ${{ inputs.build_artifact_path }}
       build_args: ${{ inputs.build_args }}
+      pull: true
 
   docker-scan:
     needs: docker-build
