@@ -6,7 +6,7 @@ on:
         description: "Java Runtime Version"
         required: false
         type: string
-        default: 21
+        default: 25
       channel-id:
         description: "Slack channel-id to post notification to"
         required: false
@@ -41,7 +41,7 @@ jobs:
           MAVEN_USERNAME: ${{ secrets.ARTIFACTORY_AUTH_USER }}
           MAVEN_PASSWORD: ${{ secrets.ARTIFACTORY_AUTH_TOKEN }}
         run: |
-          mvn -B clean package
+          mvn -B clean verify
       - name: Upload artifact for docker deploy to fetch later.
         run: |
           mkdir libs
