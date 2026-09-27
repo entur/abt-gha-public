@@ -1,0 +1,49 @@
+name: "Pre-pull Docker images in background"
+description: >-
+  Kicks off a background `docker pull` (detached with setsid + disown, so the pulls keep running on the
+  runner after this step's shell exits) for every Docker image referenced in a Java .properties file
+  maintained in the calling project (e.g. Testcontainers images used by integration tests). Only entries
+  whose key ends in ".docker-image" (dot or dash are interchangeable in this suffix, e.g. "-docker-image",
+  ".docker.image" and "-docker.image" are also accepted) are treated as an image to pull, so unrelated
+  properties can safely live in the same file. Using a Spring-style properties file lets application code
+  load the very same file (e.g. via a small classpath-resource loader) as its single source of truth,
+  instead of duplicating the image list in workflow config. Call this action right after checkout - before
+  the dependency-cache restore - so the download overlaps with dependency resolution/compilation instead of
+  blocking whichever integration test first needs the image (Testcontainers otherwise pulls lazily, on
+  demand, serially). If the file doesn't exist, this action is a no-op.
+inputs:
+  docker-images-properties-file:
+    description: "Path (relative to repo root, filename is arbitrary) to the Java .properties file containing Docker images to pre-pull."
+    required: false
+    default: "src/main/resources/testcontainers-images.properties"
+runs:
+  using: "composite"
+  steps:
+    - name: Pre-pull Docker images in background
+      shell: bash
+      run: |
+        file="${{ inputs.docker-images-properties-file }}"
+        if [ ! -f "$file" ]; then
+          echo "No properties file found at '$file' - skipping pre-pull"
+          exit 0
+        fi
+        while IFS= read -r line; do
+          # strip full-line/trailing comments and blank lines
+          line="$(echo "$line" | sed 's/^[[:space:]]*#.*$//')"
+          [ -z "$line" ] && continue
+          case "$line" in
+            *=*) ;;
+            *) continue ;;
+          esac
+          key="${line%%=*}"
+          case "$key" in
+            *[.-]docker[.-]image) ;;
+            *) continue ;;
+          esac
+          image="$(echo "${line#*=}" | xargs)"
+          [ -z "$image" ] && continue
+          echo "Pre-pulling $image (property '$key') in background"
+          logfile="docker-pull-$(echo "$image" | tr -c 'a-zA-Z0-9' '-').log"
+          setsid docker pull "$image" > "$logfile" 2>&1 < /dev/null &
+          disown
+        done < "$file"

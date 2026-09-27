@@ -12,6 +12,11 @@ on:
         required: false
         type: string
         default: ${{ vars.channel_id || 'NO_ID'}}
+      docker-images-properties-file:
+        description: "Path (relative to repo root, filename is arbitrary) to a Java .properties file, maintained in the calling project, containing Docker images (e.g. Testcontainers images used by integration tests) to pre-pull in the background before the Maven build starts. Only entries whose key ends in \".docker-image\" (dot or dash are interchangeable in this suffix, e.g. \"-docker-image\", \".docker.image\" and \"-docker.image\" are also accepted) are treated as an image to pull, so unrelated properties can safely live in the same file. Using a Spring-style properties file lets application code load the very same file (e.g. via a small classpath-resource loader) as its single source of truth, instead of duplicating the image list in workflow config. The download overlaps with dependency resolution/compilation instead of blocking the first integration test that needs the image. If the file doesn't exist, this step is skipped."
+        type: string
+        required: false
+        default: "src/main/resources/testcontainers-images.properties"
 
 jobs:
   maven-build:
@@ -21,6 +26,10 @@ jobs:
       contents: read
     steps:
       - uses: actions/checkout@9c091bb21b7c1c1d1991bb908d89e4e9dddfe3e0 # v7.0.0
+      - name: Pre-pull Docker images in background
+        uses: $/.github/actions/pre-pull-docker-images
+        with:
+          docker-images-properties-file: ${{ inputs.docker-images-properties-file }}
       - name: Set up JDK ${{ inputs.java-version }}
         uses: actions/setup-java@ad2b38190b15e4d6bdf0c97fb4fca8412226d287 # v5.3.0
         with:
