@@ -21,13 +21,15 @@ runs:
   steps:
     - name: Pre-pull Docker images in background
       shell: bash
+      env:
+        DOCKER_IMAGES_PROPERTIES_FILE: ${{ inputs.docker-images-properties-file }}
       run: |
-        file="${{ inputs.docker-images-properties-file }}"
+        file="$DOCKER_IMAGES_PROPERTIES_FILE"
         if [ ! -f "$file" ]; then
           echo "No properties file found at '$file' - skipping pre-pull"
           exit 0
         fi
-        while IFS= read -r line; do
+        while IFS= read -r line || [ -n "$line" ]; do
           # strip full-line/trailing comments and blank lines
           line="$(echo "$line" | sed 's/^[[:space:]]*#.*$//')"
           [ -z "$line" ] && continue
