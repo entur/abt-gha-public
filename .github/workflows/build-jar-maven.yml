@@ -53,8 +53,9 @@ jobs:
         env:
           MAVEN_USERNAME: ${{ secrets.ARTIFACTORY_AUTH_USER }}
           MAVEN_PASSWORD: ${{ secrets.ARTIFACTORY_AUTH_TOKEN }}
+          BUILD_PROFILES: ${{ inputs.build-profiles }}
         run: |
-          mvn -B clean package -P${{inputs.build-profiles}}
+          mvn -B clean package -P"$BUILD_PROFILES"
       - name: Upload artifact for docker deploy to fetch later.
         run: |
           mkdir libs
