@@ -35,7 +35,12 @@ jobs:
     needs: [helm-lint, docker-lint, terraform-lint]
     if: failure() && inputs.channel-id != 'NO_ID'
     uses: entur/gha-slack/.github/workflows/post.yml@v3
+    env:
+      PR_TITLE: "${{ github.event.pull_request.title }}"
+      SERVER_URL: "${{ github.server_url }}"
+      REPOSITORY: "${{ github.repository }}"
+      RUN_ID: "${{ github.run_id }}"    
     with:
       channel_id: ${{ inputs.channel-id }}
-      message: "🟡 Linting failed for ${{ github.repository }}\n${{ github.event.pull_request.title }} - ${{ github.event.pull_request.url }}"
+      message: "🟡 Linting failed for '${PR_TITLE}' \n ${SERVER_URL}/${REPOSITORY}/actions/runs/${RUN_ID}"
     secrets: inherit

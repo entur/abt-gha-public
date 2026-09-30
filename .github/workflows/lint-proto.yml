@@ -33,7 +33,12 @@ jobs:
     needs: lint-proto
     if: failure() && inputs.channel-id != 'NO_ID'
     uses: entur/gha-slack/.github/workflows/post.yml@v2
+    env:
+      PR_TITLE: "${{ github.event.pull_request.title }}"
+      SERVER_URL: "${{ github.server_url }}"
+      REPOSITORY: "${{ github.repository }}"
+      RUN_ID: "${{ github.run_id }}"
     with:
       channel_id: ${{ inputs.channel-id }}
-      message: "🟡 Lint-proto failed for ${{ github.event.pull_request.title }} \n ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}"
+      message: "🟡 Lint-proto failed for '${PR_TITLE}' \n ${SERVER_URL}/${REPOSITORY}/actions/runs/${RUN_ID}"
     secrets: inherit
