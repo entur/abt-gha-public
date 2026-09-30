@@ -39,7 +39,7 @@ on:
 jobs:
   git-diff-url:
     name: Git Diff URL
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       deployments: read
       contents: read
@@ -155,7 +155,7 @@ jobs:
     needs: [tf-plan, notify-diff]
     # !cancelled() so this still runs when notify-diff is skipped.
     if: ${{ !cancelled() && inputs.require-approval && needs.tf-plan.result == 'success' }}
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     environment: approval
     steps:
       - name: Approved

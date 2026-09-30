@@ -28,7 +28,7 @@ on:
 
 jobs:
   check-and-trigger:
-    runs-on: ubuntu-latest
+    runs-on: ubuntu-24.04
     permissions:
       contents: read
       actions: write
