@@ -136,7 +136,6 @@ jobs:
     uses: entur/gha-terraform/.github/workflows/plan.yml@v3
     with:
       environment: ${{ inputs.environment }}
-    secrets: inherit
 
   # needs tf-plan so the changelog + approve link post right before the gate.
   # @v3 exposes message_ts.
@@ -190,7 +189,6 @@ jobs:
     with:
       environment: ${{ inputs.environment }}
       has_changes: ${{ needs.tf-plan.outputs.has_changes }}
-    secrets: inherit
 
   deploy:
     name: Deploy
