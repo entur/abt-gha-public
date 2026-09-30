@@ -10,7 +10,7 @@ Changes before v1.36 are not listed; see the git history and tags.
 
 ### Removed
 - Reusable workflows with no known callers (#67): `gradle-release-sona`, `gradle-release-tag-sona`, `maven-release-sona`, `validate-jar-gradle-sona`, `validate-jar-maven-sona`, `notify-changelog`, `helm-deploy`.
-- Reusable workflows that had a single consumer each (#67, #68): `maven-release`, `validate-jar-gradle`, `maven-open-source-increment-version-and-release-to-maven-central`, `gradle-open-source-increment-version-and-release-to-maven-central`, `maven-open-source-release-tag-to-maven-central`, `gradle-open-source-release-tag-to-maven-central`, `health-check`, `check-should-release`.
+- Reusable workflows whose only callers are archived, being archived, or a test repository (#67, #68): `maven-release`, `validate-jar-gradle`, `maven-open-source-increment-version-and-release-to-maven-central`, `gradle-open-source-increment-version-and-release-to-maven-central`, `maven-open-source-release-tag-to-maven-central`, `gradle-open-source-release-tag-to-maven-central`, `health-check`, `check-should-release`.
 - The manual, on-tag and on-main release sections of the README, which documented the removed open-source release workflows (#68).
 
 ### Changed
