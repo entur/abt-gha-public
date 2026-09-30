@@ -122,22 +122,6 @@ jobs:
           retention-days: 4
           overwrite: true
 
-
-  post-to-slack-if-failure:
-    needs: validate-maven-build
-    if: failure() && inputs.channel-id != 'NO_ID' && github.event.pull_request.user.login != 'dependabot[bot]'
-
-    uses: entur/gha-slack/.github/workflows/post.yml@v2
-    env:
-      PR_TITLE: "${{ github.event.pull_request.title }}"
-      SERVER_URL: "${{ github.server_url }}"
-      REPOSITORY: "${{ github.repository }}"
-      RUN_ID: "${{ github.run_id }}"    
-    with:
-      channel_id: ${{ inputs.channel-id }}
-      message: "🟡 PR build failed for '${PR_TITLE}' \n ${SERVER_URL}/${REPOSITORY}/actions/runs/${RUN_ID}"
-    secrets: inherit
-
   auto-merge-if-dependabot-not-major:
     needs: validate-maven-build
     uses: ./.github/workflows/auto-merge.yml
