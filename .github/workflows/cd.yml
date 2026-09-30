@@ -157,9 +157,13 @@ jobs:
     if: ${{ !cancelled() && inputs.require-approval && needs.tf-plan.result == 'success' }}
     runs-on: ubuntu-24.04
     environment: approval
+    permissions: {}
     steps:
       - name: Approved
-        run: echo "Deployment of ${{ inputs.image }} to ${{ inputs.environment }} approved"
+        env:
+          IMAGE: ${{ inputs.image }}
+          ENVIRONMENT: ${{ inputs.environment }}
+        run: echo "Deployment of ${IMAGE} to ${ENVIRONMENT} approved"
 
   # React on the changelog message once approved.
   notify-approved:

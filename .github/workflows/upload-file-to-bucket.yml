@@ -61,9 +61,10 @@ jobs:
         shell: bash
         env:
           SOURCE_FILE: ${{ inputs.source-file }}
+          ARTIFACT_NAME: ${{ inputs.artifact-name }}
         run: |
           if [ ! -f "artifact/${SOURCE_FILE}" ]; then
-            echo "::error::Source file 'artifact/${SOURCE_FILE}' not found in artifact '${{ inputs.artifact-name }}'."
+            echo "::error::Source file 'artifact/${SOURCE_FILE}' not found in artifact '${ARTIFACT_NAME}'."
             echo "Contents of the downloaded artifact:"
             find artifact -type f || true
             exit 1
