@@ -133,7 +133,7 @@ jobs:
     concurrency:
       group: cd-tf-plan-${{ inputs.environment }}-${{ github.repository }}
       cancel-in-progress: true
-    uses: entur/gha-terraform/.github/workflows/plan.yml@v2
+    uses: entur/gha-terraform/.github/workflows/plan.yml@v3
     with:
       environment: ${{ inputs.environment }}
     secrets: inherit
@@ -182,7 +182,7 @@ jobs:
     concurrency:
       group: cd-tf-apply-${{ inputs.environment }}-${{ github.repository }}
       cancel-in-progress: false
-    uses: entur/gha-terraform/.github/workflows/apply.yml@v2
+    uses: entur/gha-terraform/.github/workflows/apply.yml@v3
     with:
       environment: ${{ inputs.environment }}
       has_changes: ${{ needs.tf-plan.outputs.has_changes }}
@@ -199,7 +199,7 @@ jobs:
     concurrency:
       group: cd-helm-deploy-${{ inputs.environment }}-${{ github.repository }}
       cancel-in-progress: false
-    uses: entur/gha-helm/.github/workflows/deploy.yml@v1
+    uses: entur/gha-helm/.github/workflows/deploy.yml@v2
     with:
       environment: ${{ inputs.environment }}
       image: ${{ inputs.image }}
