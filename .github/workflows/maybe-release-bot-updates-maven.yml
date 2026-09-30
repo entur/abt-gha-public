@@ -92,7 +92,7 @@ jobs:
 
       - name: Check if main dependencies have been updated
         id: check
-        uses: entur/abt-gha-public/.github/actions/has-bot-updated-main-dependencies-maven-action@reduceMavenReleases
+        uses: $/.github/actions/has-bot-updated-main-dependencies-maven-action
         with:
           release-branch: ${{ inputs.release-branch }}
           release-prefix: ${{ inputs.release-prefix }}

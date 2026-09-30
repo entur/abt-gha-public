@@ -87,7 +87,7 @@ jobs:
 
       - name: Check if runtime dependencies have been updated
         id: check
-        uses: entur/abt-gha-public/.github/actions/has-bot-updated-runtime-dependencies-gradle-action@reduceMavenReleases
+        uses: $/.github/actions/has-bot-updated-runtime-dependencies-gradle-action
         with:
           release-branch: ${{ inputs.release-branch }}
           release-prefix: ${{ inputs.release-prefix }}
