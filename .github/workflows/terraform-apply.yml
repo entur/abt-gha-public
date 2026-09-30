@@ -18,7 +18,7 @@ on:
 jobs:
   tf-apply:
     name: Apply
-    uses: entur/gha-terraform/.github/workflows/apply.yml@v2
+    uses: entur/gha-terraform/.github/workflows/apply.yml@v3
     secrets: inherit
     concurrency:
       group: terraform-apply-${{ inputs.environment }}-${{ github.repository }}
