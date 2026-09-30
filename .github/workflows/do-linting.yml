@@ -27,6 +27,7 @@ jobs:
     needs: [helm-lint, docker-lint, terraform-lint]
     if: success()
     runs-on: ubuntu-24.04
+    permissions: {}
     steps:
       - run: |
           echo "Linting of Terraform, docker and helm done." >> $GITHUB_STEP_SUMMARY

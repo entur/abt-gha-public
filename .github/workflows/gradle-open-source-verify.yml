@@ -30,8 +30,12 @@ on:
 jobs:
   build:
     runs-on: ${{ inputs.runs-on }}
+    permissions:
+      contents: read
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Java ${{ inputs.java-version }}
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
@@ -40,14 +44,16 @@ jobs:
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
       - name: Build with Gradle Wrapper
+        env:
+          LOG_LEVEL: ${{ inputs.log-level }}
         run: |
           GRADLE_LOG_ARGUMENT=""
           # detect log level      
-          if [ "${{ inputs.log-level }}" = "info" ]; then
+          if [ "$LOG_LEVEL" = "info" ]; then
             GRADLE_LOG_ARGUMENT="--info"
-          elif [ "${{ inputs.log-level }}" = "debug" ]; then
+          elif [ "$LOG_LEVEL" = "debug" ]; then
             GRADLE_LOG_ARGUMENT="--debug"
-          elif [ "${{ inputs.log-level }}" = "warn" ]; then
+          elif [ "$LOG_LEVEL" = "warn" ]; then
             GRADLE_LOG_ARGUMENT="--warn"
           fi
           ./gradlew ${{ inputs.tasks }} $GRADLE_LOG_ARGUMENT --stacktrace

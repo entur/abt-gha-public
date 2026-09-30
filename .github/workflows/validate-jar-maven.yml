@@ -40,10 +40,14 @@ on:
 jobs:
   validate-maven-build:
     runs-on: ${{ inputs.build-runner }}
+    permissions:
+      contents: read
     outputs:
       deploy-message: ${{ steps.autodeploy.outputs.message }}
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
       - name: Set up Java ${{ inputs.java-version }}
         uses: actions/setup-java@de7274f081f381c8f8158605e0321c36c376e2e6 # v6.0.1
         with:
@@ -72,9 +76,10 @@ jobs:
         env:
           MAVEN_USERNAME: ${{ secrets.ARTIFACTORY_AUTH_USER }}
           MAVEN_PASSWORD: ${{ secrets.ARTIFACTORY_AUTH_TOKEN }}
+          BUILD_PROFILES: ${{ inputs.build-profiles }}
         run: |
-          mvn -B clean verify -P${{inputs.build-profiles}}
-          echo "Validating maven build with profile(s): ${{inputs.build-profiles}}" >> $GITHUB_STEP_SUMMARY
+          mvn -B clean verify -P"${BUILD_PROFILES}"
+          echo "Validating maven build with profile(s): ${BUILD_PROFILES}" >> $GITHUB_STEP_SUMMARY
       - name: Print error reports
         if: failure()
         run: |

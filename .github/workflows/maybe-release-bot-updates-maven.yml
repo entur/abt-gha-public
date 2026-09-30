@@ -72,6 +72,7 @@ jobs:
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
+          persist-credentials: false
           ref: ${{ inputs.release-branch }}
           fetch-depth: 0
           fetch-tags: true
@@ -105,8 +106,11 @@ jobs:
         if: steps.check.outputs.updated == 'true' && inputs.trigger-release == true
         env:
           GH_TOKEN: ${{ github.token }}
+          WORKFLOW: ${{ inputs.workflow }}
+          REPO: ${{ github.repository }}
+          RELEASE_BRANCH: ${{ inputs.release-branch }}
         run: |
-          gh workflow run "${{ inputs.workflow }}" --repo "${{ github.repository }}" --ref "${{ inputs.release-branch }}"
+          gh workflow run "$WORKFLOW" --repo "$REPO" --ref "$RELEASE_BRANCH"
           echo "dispatched=true" >> "$GITHUB_OUTPUT"
 
       - name: Set job outputs

@@ -74,6 +74,7 @@ jobs:
     needs: docker-push
     if: success()
     runs-on: ubuntu-24.04
+    permissions: {}
     steps:
       - run: |
           echo "Image successfully deployed to docker repos" >> $GITHUB_STEP_SUMMARY
