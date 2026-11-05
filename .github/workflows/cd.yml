@@ -139,16 +139,55 @@ jobs:
     with:
       environment: ${{ inputs.environment }}
 
-  # needs tf-plan so the changelog + approve link post right before the gate.
-  # @v3 exposes message_ts.
-  notify-diff:
-    name: Notify Git Diff
+  # Append a link to the Terraform plan job when the plan has changes.
+  # plan.yml exposes no URL, so look the job up via the API: it shares this
+  # job's caller prefix ("<caller job> / Terraform Plan / terraform-plan").
+  slack-message:
+    name: Slack message
     needs: [git-diff-url, tf-plan]
     if: ${{ inputs.notify-changelog && inputs.channel-id != '' && needs.git-diff-url.outputs.compare_url != '' }}
+    runs-on: ubuntu-24.04
+    permissions:
+      actions: read
+    outputs:
+      message: ${{ steps.build.outputs.message }}
+    steps:
+      - name: Build Slack message
+        id: build
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          MESSAGE: ${{ needs.git-diff-url.outputs.slack_message }}
+          HAS_CHANGES: ${{ needs.tf-plan.outputs.has_changes }}
+          PLAN_SUMMARY: ${{ needs.tf-plan.outputs.plan_summary }}
+          CHECK_RUN_ID: ${{ job.check_run_id }}
+        run: |
+          # Best effort: never fail (and so never drop the changelog) over the plan link.
+          if [ "$HAS_CHANGES" = "true" ] && [ -n "$CHECK_RUN_ID" ]; then
+            JOBS_API="repos/${GITHUB_REPOSITORY}/actions/runs/${GITHUB_RUN_ID}/attempts/${GITHUB_RUN_ATTEMPT}/jobs"
+            SELF_NAME=$(gh api "repos/${GITHUB_REPOSITORY}/actions/jobs/${CHECK_RUN_ID}" --jq '.name' 2>/dev/null || true)
+            PLAN_NAME="${SELF_NAME% / Slack message} / Terraform Plan / terraform-plan"
+            PLAN_URL=$(gh api --paginate "$JOBS_API?per_page=100" 2>/dev/null \
+              | jq -r --arg name "$PLAN_NAME" '.jobs[] | select(.name == $name) | .html_url' 2>/dev/null \
+              | head -n1 || true)
+            if [ -n "$SELF_NAME" ] && [ -n "$PLAN_URL" ]; then
+              # e.g. "Plan: 1 to add, 2 to change, 0 to destroy." (absent for output-only changes)
+              COUNTS=$(printf '%s\n' "$PLAN_SUMMARY" | grep -m1 '^Plan:' | sed 's/^Plan: //; s/\.$//' || true)
+              MESSAGE="$MESSAGE <$PLAN_URL|Terraform plan has changes>${COUNTS:+ ($COUNTS)}"
+            else
+              echo "::warning::Terraform plan has changes, but its job URL could not be found (looked for '$PLAN_NAME')"
+            fi
+          fi
+          echo "message=$MESSAGE" >> "$GITHUB_OUTPUT"
+
+  # needs tf-plan (via slack-message) so the changelog + approve link post right
+  # before the gate. @v3 exposes message_ts.
+  notify-diff:
+    name: Notify Git Diff
+    needs: [slack-message]
     uses: entur/gha-slack/.github/workflows/post.yml@v3
     with:
       channel_id: ${{ inputs.channel-id }}
-      message: ${{ needs.git-diff-url.outputs.slack_message }}
+      message: ${{ needs.slack-message.outputs.message }}
     secrets: inherit
 
   approve:
