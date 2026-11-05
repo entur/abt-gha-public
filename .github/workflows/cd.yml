@@ -64,11 +64,13 @@ jobs:
               -f per_page=100 \
               --jq '.[] | "\(.sha) \(.statuses_url)"' | \
             while IFS=' ' read -r sha statuses_url; do
-              # Latest status of this deployment: state + the run that created it.
-              info=$(gh api "$statuses_url" --jq '.[0] | "\(.state) \(.log_url)"' 2>/dev/null || true)
-              state=${info%% *}
-              log_url=${info#* }
-              [ "$state" = "success" ] || continue
+              # The run/job that created this deployment, if it ever succeeded.
+              # Don't require the LATEST status to be success: when a newer
+              # deployment to the same env succeeds (e.g. this run's descriptor
+              # upload), GitHub marks all older ones inactive, which would hide
+              # every previous real release.
+              log_url=$(gh api "$statuses_url" --jq 'first(.[] | select(.state == "success")) | .log_url // ""' 2>/dev/null || true)
+              [ -n "$log_url" ] || continue
               # Ignore deployments created by THIS run. A job that declares
               # environment: <env> (e.g. the descriptor upload via
               # upload-file-to-bucket) makes GitHub create a deployment for the
