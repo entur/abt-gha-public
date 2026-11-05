@@ -31,6 +31,9 @@ Changes before v1.36 are not listed; see the git history and tags.
 
 `gradle/actions/setup-gradle` stays on v5.0.2 (v6 has licensing issues).
 
+### Fixed
+- `cd`: the changelog Slack message (and approval link) was never posted when a job in the same run had already deployed to the environment, e.g. the descriptor upload. GitHub marks older deployments `inactive` once a newer one succeeds, and only deployments whose latest status was `success` were considered; now any deployment that ever reached `success` counts.
+
 ### Security
 
 | Area | Change | PR |
