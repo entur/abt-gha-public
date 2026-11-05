@@ -8,6 +8,9 @@ Changes before v1.36 are not listed; see the git history and tags.
 
 ## [Unreleased]
 
+### Added
+- `cd`: when the Terraform plan has changes, the changelog Slack message links to the plan job, with the add/change/destroy counts.
+
 ### Removed
 - Reusable workflows with no known callers (#67): `gradle-release-sona`, `gradle-release-tag-sona`, `maven-release-sona`, `validate-jar-gradle-sona`, `validate-jar-maven-sona`, `notify-changelog`, `helm-deploy`.
 - Reusable workflows whose only callers are archived, being archived, or a test repository (#67, #68): `maven-release`, `validate-jar-gradle`, `maven-open-source-increment-version-and-release-to-maven-central`, `gradle-open-source-increment-version-and-release-to-maven-central`, `maven-open-source-release-tag-to-maven-central`, `gradle-open-source-release-tag-to-maven-central`, `health-check`, `check-should-release`.
