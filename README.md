@@ -74,14 +74,14 @@ publications {
 Upload to Maven central without close/releasing staging repo: Set `tasks` parameter `build publishToSonatype`.
 
 # Safe Java version
-The reusable workflows and the Copilot setup actions set up Java through the [`safe-java-version`](.github/actions/safe-java-version/action.yml) action before `actions/setup-java`. It translates the requested Java version and the distribution into a version that is safe to use (CVE-2026-91403, eMudhra CA compromise): a bare major becomes the patched build, a full version is passed through. Apps can keep `java-version: 25` and get the patched JDK.
+The reusable workflows and the Copilot setup actions set up Java through the [`safe-java-version`](.github/actions/safe-java-version/action.yml) action before `actions/setup-java`. It translates the requested Java version and the distribution into a version that is safe to use (CVE-2026-91403, eMudhra CA compromise): a bare major (8, 11, 17, 21, 25) becomes the patched build, a full version is passed through. Apps can keep `java-version: 25` and get the patched JDK.
 
-| Distribution | 17 | 21 | 25 |
-|---|---|---|---|
-| `liberica` | `17.0.21+0.3.5` | `21.0.13+0.3.5` | `25.0.5+0.3.5` |
-| `temurin` | `17.0.21+9` | `21.0.13+9.0.LTS` | `25.0.5+8.0.LTS` |
+| Distribution | 8 | 11 | 17 | 21 | 25 |
+|---|---|---|---|---|---|
+| `liberica` | `8.0.513+9` | `11.0.33+0.3.7` | `17.0.21+0.3.5` | `21.0.13+0.3.5` | `25.0.5+0.3.5` |
+| `temurin` | `8.0.512+9` | `11.0.33+10` | `17.0.21+9` | `21.0.13+9.0.LTS` | `25.0.5+8.0.LTS` |
 
-Temurin: the October 2026 builds carry the fix. Adoptium's [announcement](https://adoptium.net/news/2026/10/temurin-october-2026-emudhra) says their trust store (built from Mozilla NSS 3.131.1) no longer contains the roots that signed the compromised intermediates, and the self-test confirms it by inspecting each JDK's trust store. Temurin 11 and 8 had no patched build when this was written, and Temurin keeps `emSign Root CA - G1`, which Mozilla still trusts. A bare major is mapped to an exact pin because the same Temurin version string can come from different binaries (a download, or a copy cached on the runner image).
+Temurin: the October 2026 builds carry the fix. Adoptium's [announcement](https://adoptium.net/news/2026/10/temurin-october-2026-emudhra) says their trust store (built from Mozilla NSS 3.131.1) no longer contains the roots that signed the compromised intermediates, and the self-test confirms it by inspecting each JDK's trust store. Temurin 11 and 8 followed on 2026-11-04 and are patched too. Temurin keeps `emSign Root CA - G1`, which Mozilla still trusts. A bare major is mapped to an exact pin because the same Temurin version string can come from different binaries (a download, or a copy cached on the runner image).
 
 A version with no patched build, and any other distribution, is passed through and the step warns; `fail-if-unpatched: true` fails the step instead.
 
