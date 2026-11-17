@@ -20,6 +20,8 @@ Changes before v1.36 are not listed; see the git history and tags.
 - Runners: `ubuntu-latest` → `ubuntu-24.04` (#69).
 - Same-repository action and workflow references use the `$/` self-repository syntax (requires runner 2.336.0 or newer), replacing branch and relative refs (#72).
 - Reduced the number of Maven Central releases triggered by bot updates: `maybe-release-bot-updates-maven` and `-gradle` (#52).
+- Default `java-version` is now the patched Liberica build `25.0.5+0.3.5` (BellSoft `25.0.5.0.3+5`, CVE-2026-91403) instead of plain `25`, which resolves to the unfixed `25.0.5+11`. Affects `build-jar-maven`, `maybe-release-bot-updates-maven`, `maybe-release-bot-updates-gradle` and the `partner-app-copilot-setup-steps-maven`/`-gradle` actions.
+- `maven-open-source-verify`: default `java-version` changed from `21` to `25.0.5+0.3.5`. Callers that relied on the default now build with Java 25; pass `java-version` explicitly to keep an older version.
 
 ### Dependency updates (#70)
 
