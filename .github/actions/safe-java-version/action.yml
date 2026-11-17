@@ -1,7 +1,7 @@
 name: "Safe Java version"
 description: >
   Translates a Java version and a setup-java distribution into a version that is safe to use.
-  A bare major (17, 21, 25) is mapped to the patched build for the distribution
+  A bare major (8, 11, 17, 21, 25) is mapped to the patched build for the distribution
   (CVE-2026-91403, eMudhra CA compromise). Full versions are passed through unchanged.
   Warns, or fails with fail-if-unpatched, when no patched build is known.
 
@@ -10,14 +10,15 @@ description: >
 #
 # Patched builds
 # --------------
-#   liberica  BellSoft 17.0.21.0.3+5, 21.0.13.0.3+5, 25.0.5.0.3+5 (out-of-band patch builds; the plain
-#             17.0.21+11 / 21.0.13+11 / 25.0.5+11 are NOT patched).
-#   temurin   17.0.21+9, 21.0.13+9.0.LTS, 25.0.5+8.0.LTS. The October 2026 Temurin builds carry the fix:
+#   liberica  BellSoft 11.0.33.0.3+7, 17.0.21.0.3+5, 21.0.13.0.3+5, 25.0.5.0.3+5 (out-of-band patch builds;
+#             the plain 11.0.33+11 / 17.0.21+11 / 21.0.13+11 / 25.0.5+11 are NOT patched) and 8u513+9 (a regular
+#             release; 8u512+11 is NOT patched).
+#   temurin   8.0.512+9, 11.0.33+10, 17.0.21+9, 21.0.13+9.0.LTS, 25.0.5+8.0.LTS. The October 2026 builds carry the fix:
 #             their trust store is built from Mozilla NSS 3.131.1, which no longer contains the roots that
 #             signed the compromised intermediates (Adoptium, 2026-10-27:
 #             https://adoptium.net/news/2026/10/temurin-october-2026-emudhra). Confirmed by inspecting the
-#             trust store in the self-test. Temurin 11 and 8 were still awaiting upstream tags then, so
-#             they have no patched build here. The same version string can come from different binaries
+#             trust store in the self-test (Temurin 11 and 8 followed on 2026-11-04). Temurin keeps
+#             emSign Root CA - G1, which Mozilla still trusts. The same version string can come from different binaries
 #             (a download vs. the runner image's cached copy), so exact pins are worth more than a bare major.
 #
 # Version spelling
@@ -74,7 +75,10 @@ runs:
             temurin:17) echo "17.0.21+9" ;;
             temurin:21) echo "21.0.13+9.0.LTS" ;;
             temurin:25) echo "25.0.5+8.0.LTS" ;;
-            # temurin 11 / 8: no patched build yet (awaiting upstream tags, per Adoptium).
+            liberica:8) echo "8.0.513+9" ;;
+            liberica:11) echo "11.0.33+0.3.7" ;;
+            temurin:8) echo "8.0.512+9" ;;
+            temurin:11) echo "11.0.33+10" ;;
           esac
         }
 
