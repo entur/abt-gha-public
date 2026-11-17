@@ -117,6 +117,69 @@ jobs:
           test -z "$GOT_VERSION"
           test -z "$GOT_DISTRIBUTION"
 
+  truststore:
+    # What actually matters: does the JDK that runs distrust the roots that signed the compromised
+    # eMudhra intermediates? Inspect the trust store itself instead of trusting version strings.
+    name: truststore (${{ matrix.label }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { label: liberica-25, distribution: liberica, requested: "25" }
+          - { label: liberica-21, distribution: liberica, requested: "21" }
+          - { label: liberica-17, distribution: liberica, requested: "17" }
+          - { label: liberica-25-unfixed-control, distribution: liberica, requested: "25.0.5+11" }
+          - { label: temurin-25.0.5+8, distribution: temurin, requested: "25.0.5+8.0.LTS" }
+          - { label: temurin-21.0.13+9, distribution: temurin, requested: "21.0.13+9.0.LTS" }
+          - { label: temurin-17.0.21+9, distribution: temurin, requested: "17.0.21+9" }
+          - { label: temurin-25-floating, distribution: temurin, requested: "25" }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Resolve
+        id: safe
+        uses: ./.github/actions/safe-java-version
+        with:
+          java-version: ${{ matrix.requested }}
+          distribution: ${{ matrix.distribution }}
+      - name: Set up Java ${{ steps.safe.outputs.java-version }}
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          java-version: ${{ steps.safe.outputs.java-version }}
+          distribution: ${{ steps.safe.outputs.distribution }}
+      - name: Inspect the trust store
+        env:
+          LABEL: ${{ matrix.label }}
+        run: |
+          runtime="$(java -XshowSettings:properties -version 2>&1 | sed -n 's/^ *java.runtime.version = //p')"
+          owners="$(keytool -list -v -cacerts -storepass changeit 2>/dev/null | sed -n 's/^Owner: //p')"
+          g3="$(printf '%s\n' "$owners" | grep -ci 'CN=emSign ECC Root CA - G3' || true)"
+          aaa="$(printf '%s\n' "$owners" | grep -ci 'CN=AAA Certificate Services' || true)"
+          echo "TRUSTSTORE label=$LABEL runtime=$runtime emSignECCRootG3=$g3 AAACertificateServices=$aaa roots=$(printf '%s\n' "$owners" | grep -c .)"
+
+  runner-default:
+    # The JDKs preinstalled on the runner image, used as-is when a job does not call setup-java.
+    name: runner-default (JAVA_HOME_${{ matrix.major }}_X64)
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        major: ["17", "21", "25"]
+    steps:
+      - name: Inspect the trust store
+        env:
+          MAJOR: ${{ matrix.major }}
+        run: |
+          home_var="JAVA_HOME_${MAJOR}_X64"
+          home="${!home_var}"
+          runtime="$("$home/bin/java" -XshowSettings:properties -version 2>&1 | sed -n 's/^ *java.runtime.version = //p')"
+          owners="$("$home/bin/keytool" -list -v -cacerts -storepass changeit 2>/dev/null | sed -n 's/^Owner: //p')"
+          g3="$(printf '%s\n' "$owners" | grep -ci 'CN=emSign ECC Root CA - G3' || true)"
+          aaa="$(printf '%s\n' "$owners" | grep -ci 'CN=AAA Certificate Services' || true)"
+          echo "TRUSTSTORE label=runner-default-$MAJOR home=$home runtime=$runtime emSignECCRootG3=$g3 AAACertificateServices=$aaa roots=$(printf '%s\n' "$owners" | grep -c .)"
+
   setup-java:
     # The whole chain: resolved version -> actions/setup-java -> the JDK that actually runs.
     name: setup-java (${{ matrix.distribution }} ${{ matrix.requested }})
