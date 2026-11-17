@@ -6,6 +6,11 @@ on:
         description: "Java Runtime Version. A bare major (17, 21, 25) is mapped to the patched build; see the safe-java-version action."
         required: true
         type: string
+      java-distribution:
+        description: "Java distribution for setup-java: liberica or temurin. Both have patched builds for 17, 21 and 25 (see the safe-java-version action)."
+        required: false
+        type: string
+        default: "liberica"
       server-id:
         description: Server-id used in pom to reference generated settings.xml
         type: string
@@ -53,12 +58,12 @@ jobs:
         uses: $/.github/actions/safe-java-version
         with:
           java-version: ${{ inputs.java-version }}
-          distribution: liberica
+          distribution: ${{ inputs.java-distribution }}
       - name: Set up Java ${{ steps.java.outputs.java-version }}
         uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           java-version: ${{ steps.java.outputs.java-version }}
-          distribution: liberica
+          distribution: ${{ inputs.java-distribution }}
           server-id: ${{ inputs.server-id }}
           server-username: MAVEN_USERNAME
           server-password: MAVEN_PASSWORD

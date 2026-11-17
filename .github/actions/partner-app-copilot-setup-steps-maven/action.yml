@@ -8,6 +8,10 @@ inputs:
     description: "Java Runtime Version. A bare major (17, 21, 25) is mapped to the patched build; see the safe-java-version action."
     required: false
     default: "25"
+  java-distribution:
+    description: "Java distribution for setup-java: liberica or temurin. Both have patched builds for 17, 21 and 25 (see the safe-java-version action)."
+    required: false
+    default: "liberica"
   artifactory-auth-user:
     description: "Read-only Artifactory username"
     required: true
@@ -39,12 +43,12 @@ runs:
       uses: $/.github/actions/safe-java-version
       with:
         java-version: ${{ inputs.java-version }}
-        distribution: liberica
+        distribution: ${{ inputs.java-distribution }}
     - name: Set up Java ${{ steps.java.outputs.java-version }}
       uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
       with:
         java-version: ${{ steps.java.outputs.java-version }}
-        distribution: liberica
+        distribution: ${{ inputs.java-distribution }}
         server-id: entur-partner
         server-username: PARTNER_READ_ARTIFACTORY_AUTH_USER
         server-password: PARTNER_READ_ARTIFACTORY_AUTH_TOKEN

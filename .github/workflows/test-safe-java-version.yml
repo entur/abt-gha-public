@@ -127,6 +127,49 @@ jobs:
           test -z "$GOT_VERSION"
           test -z "$GOT_DISTRIBUTION"
 
+  wiring:
+    # Guard the invariants the rewiring relies on, so a new setup-java step cannot skip the resolver
+    # and nothing hard-codes a distribution again.
+    name: wiring
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Every setup-java step uses the resolved version and a distribution input
+        run: |
+          resolver='uses: $/.github/actions/safe-java-version'
+          resolved="java-version: "'$''{{ steps.java.outputs.java-version }}'
+          fail=0
+          for f in .github/workflows/*.yml .github/actions/*/action.yml; do
+            case "$f" in *test-safe-java-version.yml|*safe-java-version/action.yml) continue ;; esac
+            n_java="$(grep -c 'uses: actions/setup-java@' "$f" || true)"
+            [ "$n_java" -gt 0 ] || continue
+            n_resolver="$(grep -cF "$resolver" "$f" || true)"
+            n_resolved="$(grep -cF "$resolved" "$f" || true)"
+            n_hard="$(grep -cE 'distribution: (liberica|temurin)' "$f" || true)"
+            echo "$f: setup-java=$n_java resolver=$n_resolver resolved-version=$n_resolved hard-coded-distribution=$n_hard"
+            if [ "$n_resolver" != "$n_java" ] || [ "$n_resolved" != "$n_java" ] || [ "$n_hard" != 0 ]; then
+              echo "::error file=$f::every setup-java step needs a safe-java-version step before it, must use its output, and must take the distribution from an input"
+              fail=1
+            fi
+          done
+          exit "$fail"
+      - name: Every java-distribution input defaults to liberica
+        run: |
+          fail=0
+          for f in .github/workflows/*.yml .github/actions/*/action.yml; do
+            case "$f" in *test-safe-java-version.yml|*safe-java-version/action.yml) continue ;; esac
+            grep -qE '^ +java-distribution:[ ]*$' "$f" || continue
+            if ! awk '/^ +java-distribution:[ ]*$/ { found=1; ok=0; n=0; next }
+                      found { n++; if ($0 ~ /default: "liberica"/) ok=1; if (n >= 6) { if (!ok) bad=1; found=0 } }
+                      END { exit bad }' "$f"; then
+              echo "::error file=$f::java-distribution must default to liberica"
+              fail=1
+            fi
+          done
+          exit "$fail"
+
   truststore:
     # What actually matters: does the JDK that runs distrust the roots that signed the compromised
     # eMudhra intermediates? Inspect the trust store itself instead of trusting version strings.

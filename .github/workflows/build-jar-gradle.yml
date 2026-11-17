@@ -7,6 +7,11 @@ on:
         required: false
         type: string
         default: "25"
+      java-distribution:
+        description: "Java distribution for setup-java: liberica or temurin. Both have patched builds for 17, 21 and 25 (see the safe-java-version action)."
+        required: false
+        type: string
+        default: "liberica"
       channel-id:
         description: "Slack channel-id to post notification to"
         required: false
@@ -28,12 +33,12 @@ jobs:
         uses: $/.github/actions/safe-java-version
         with:
           java-version: ${{ inputs.java-version }}
-          distribution: liberica
+          distribution: ${{ inputs.java-distribution }}
       - name: Set up JDK ${{ steps.java.outputs.java-version }}
         uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
         with:
           java-version: ${{ steps.java.outputs.java-version }}
-          distribution: liberica
+          distribution: ${{ inputs.java-distribution }}
       - name: Setup Gradle
         uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2
       - name: Build with Gradle Wrapper

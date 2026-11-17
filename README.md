@@ -85,6 +85,8 @@ Temurin: the October 2026 builds carry the fix. Adoptium's [announcement](https:
 
 A version with no patched build, and any other distribution, is passed through and the step warns; `fail-if-unpatched: true` fails the step instead.
 
+Every reusable workflow and Copilot setup action that sets up Java takes a `java-distribution` input (default `liberica`; `temurin` is covered too), for example `with: { java-distribution: temurin }`.
+
 In your own workflow:
 
 ```yaml
