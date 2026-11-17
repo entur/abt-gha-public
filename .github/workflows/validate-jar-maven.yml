@@ -3,7 +3,7 @@ on:
   workflow_call:
     inputs:
       java-version:
-        description: Java Runtime Version
+        description: "Java Runtime Version. A bare major (17, 21, 25) is mapped to the patched build; see the safe-java-version action."
         required: true
         type: string
       server-id:
@@ -48,10 +48,16 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Set up Java ${{ inputs.java-version }}
-        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+      - name: Resolve safe Java version
+        id: java
+        uses: $/.github/actions/safe-java-version
         with:
           java-version: ${{ inputs.java-version }}
+          distribution: liberica
+      - name: Set up Java ${{ steps.java.outputs.java-version }}
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          java-version: ${{ steps.java.outputs.java-version }}
           distribution: liberica
           server-id: ${{ inputs.server-id }}
           server-username: MAVEN_USERNAME

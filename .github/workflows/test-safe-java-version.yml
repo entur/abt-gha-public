@@ -1,0 +1,108 @@
+name: Test safe-java-version
+on:
+  pull_request:
+    paths:
+      - ".github/actions/safe-java-version/**"
+      - ".github/workflows/test-safe-java-version.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: resolve (${{ matrix.distribution }} ${{ matrix.requested }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { distribution: liberica, requested: "25", version: "25.0.5+0.3.5", patched: "true" }
+          - { distribution: liberica, requested: "21", version: "21.0.13+0.3.5", patched: "true" }
+          - { distribution: liberica, requested: "17", version: "17.0.21+0.3.5", patched: "true" }
+          - { distribution: Liberica, requested: "25", version: "25.0.5+0.3.5", patched: "true" }
+          - { distribution: liberica, requested: "25.0.5+0.3.5", version: "25.0.5+0.3.5", patched: "true" }
+          - { distribution: liberica, requested: "25.0.4", version: "25.0.4", patched: "false" }
+          - { distribution: liberica, requested: "11", version: "11", patched: "false" }
+          - { distribution: temurin, requested: "25", version: "25", patched: "false" }
+          - { distribution: temurin, requested: "21", version: "21", patched: "false" }
+          - { distribution: zulu, requested: "25", version: "25", patched: "false" }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Resolve
+        id: safe
+        uses: ./.github/actions/safe-java-version
+        with:
+          java-version: ${{ matrix.requested }}
+          distribution: ${{ matrix.distribution }}
+      - name: Check outputs
+        env:
+          GOT_VERSION: ${{ steps.safe.outputs.java-version }}
+          GOT_PATCHED: ${{ steps.safe.outputs.patched }}
+          WANT_VERSION: ${{ matrix.version }}
+          WANT_PATCHED: ${{ matrix.patched }}
+        run: |
+          echo "java-version=$GOT_VERSION (want $WANT_VERSION), patched=$GOT_PATCHED (want $WANT_PATCHED)"
+          test "$GOT_VERSION" = "$WANT_VERSION"
+          test "$GOT_PATCHED" = "$WANT_PATCHED"
+
+  fail-if-unpatched:
+    name: fail-if-unpatched
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Resolve (must fail: no patched Temurin)
+        id: unpatched
+        continue-on-error: true
+        uses: ./.github/actions/safe-java-version
+        with:
+          java-version: "25"
+          distribution: temurin
+          fail-if-unpatched: "true"
+      - name: Resolve (must pass: patched Liberica)
+        id: patched
+        uses: ./.github/actions/safe-java-version
+        with:
+          java-version: "25"
+          distribution: liberica
+          fail-if-unpatched: "true"
+      - name: Check
+        env:
+          UNPATCHED_OUTCOME: ${{ steps.unpatched.outcome }}
+        run: test "$UNPATCHED_OUTCOME" = "failure"
+
+  setup-java:
+    # The whole chain: resolved version -> actions/setup-java -> the JDK that actually runs.
+    name: setup-java (${{ matrix.distribution }} ${{ matrix.requested }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { distribution: liberica, requested: "25", runtime: "25.0.5.0.3+5" }
+          - { distribution: liberica, requested: "21", runtime: "21.0.13.0.3+5" }
+          - { distribution: liberica, requested: "17", runtime: "17.0.21.0.3+5" }
+          - { distribution: temurin, requested: "25", runtime: "" }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+      - name: Resolve
+        id: safe
+        uses: ./.github/actions/safe-java-version
+        with:
+          java-version: ${{ matrix.requested }}
+          distribution: ${{ matrix.distribution }}
+      - name: Set up Java ${{ steps.safe.outputs.java-version }}
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          java-version: ${{ steps.safe.outputs.java-version }}
+          distribution: ${{ steps.safe.outputs.distribution }}
+      - name: Check the JDK that was installed
+        env:
+          WANT_RUNTIME: ${{ matrix.runtime }}
+        run: |
+          java -XshowSettings:properties -version 2>&1 | grep -E "java.runtime.version|java.vendor =|java.version =" || true
+          got="$(java -XshowSettings:properties -version 2>&1 | sed -n 's/^ *java.runtime.version = //p')"
+          echo "java.runtime.version=$got (want prefix: ${WANT_RUNTIME:-none})"
+          if [ -n "$WANT_RUNTIME" ]; then
+            case "$got" in "$WANT_RUNTIME"*) ;; *) echo "::error::expected a runtime starting with $WANT_RUNTIME"; exit 1 ;; esac
+          fi

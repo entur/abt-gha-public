@@ -10,6 +10,7 @@ Changes before v1.36 are not listed; see the git history and tags.
 
 ### Added
 - `cd`: when the Terraform plan has changes, the changelog Slack message links to the plan job, with the add/change/destroy counts.
+- `safe-java-version` action: translates a Java version and a `setup-java` distribution into a safe version. A bare major (`17`, `21`, `25`) on Liberica becomes the patched build (`17.0.21+0.3.5`, `21.0.13+0.3.5`, `25.0.5+0.3.5`; CVE-2026-91403); full versions are passed through. Temurin has no patched build, so it is passed through with a warning, or fails with `fail-if-unpatched: true`. Covered by the `Test safe-java-version` workflow.
 
 ### Removed
 - Reusable workflows with no known callers (#67): `gradle-release-sona`, `gradle-release-tag-sona`, `maven-release-sona`, `validate-jar-gradle-sona`, `validate-jar-maven-sona`, `notify-changelog`, `helm-deploy`.
@@ -22,6 +23,7 @@ Changes before v1.36 are not listed; see the git history and tags.
 - Reduced the number of Maven Central releases triggered by bot updates: `maybe-release-bot-updates-maven` and `-gradle` (#52).
 - Default `java-version` is now the patched Liberica build `25.0.5+0.3.5` (BellSoft `25.0.5.0.3+5`, CVE-2026-91403) instead of plain `25`, which resolves to the unfixed `25.0.5+11`. Affects `build-jar-maven`, `maybe-release-bot-updates-maven`, `maybe-release-bot-updates-gradle` and the `partner-app-copilot-setup-steps-maven`/`-gradle` actions.
 - `maven-open-source-verify`, `gradle-open-source-verify` and `build-jar-gradle`: default `java-version` changed from `21` to `25.0.5+0.3.5`. Callers that relied on the default now build with Java 25; pass `java-version` explicitly to keep an older version.
+- The reusable workflows that call `actions/setup-java` (`build-jar-maven`, `build-jar-gradle`, `validate-jar-maven`, `maven-open-source-verify`, `gradle-open-source-verify`, `maybe-release-bot-updates-maven`/`-gradle`) resolve the version through `safe-java-version`. The default is a bare `25` again, and the patched build now lives only in the action. Callers passing a bare `17`, `21` or `25` on Liberica now get the patched build; explicit full versions are unchanged. Callers on another distribution get a warning.
 
 ### Dependency updates (#70)
 

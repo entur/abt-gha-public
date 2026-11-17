@@ -73,6 +73,32 @@ publications {
 #### Gradle dry-run
 Upload to Maven central without close/releasing staging repo: Set `tasks` parameter `build publishToSonatype`.
 
+# Safe Java version
+The reusable workflows set up Java through the [`safe-java-version`](.github/actions/safe-java-version/action.yml) action before `actions/setup-java`. It translates the requested Java version and the distribution into a version that is safe to use (CVE-2026-91403, eMudhra CA compromise): a bare major becomes the patched build, a full version is passed through. Apps can keep `java-version: 25` and get the patched JDK.
+
+| Distribution | 17 | 21 | 25 |
+|---|---|---|---|
+| `liberica` | `17.0.21+0.3.5` | `21.0.13+0.3.5` | `25.0.5+0.3.5` |
+| `temurin` | no patched build | no patched build | no patched build |
+
+Temurin has no patched build yet (the newest, 17.0.21+9 / 21.0.13+9.0.LTS / 25.0.5+8.0.LTS, were released 2026-10-22, before the compromise). The version is passed through and the step warns; `fail-if-unpatched: true` fails the step instead. Other distributions are passed through with a warning.
+
+In your own workflow:
+
+```yaml
+- id: java
+  uses: entur/abt-gha-public/.github/actions/safe-java-version@v2
+  with:
+    java-version: 25
+    distribution: liberica
+- uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0, at least 6.2.0
+  with:
+    java-version: ${{ steps.java.outputs.java-version }}
+    distribution: ${{ steps.java.outputs.distribution }}
+```
+
+`actions/setup-java` must be at least v6.2.0: it spells BellSoft's `25.0.5.0.3+5` as `25.0.5+0.3.5`, older releases do not. Outputs: `java-version`, `distribution`, `patched`. The table is the `pin_for` function in the action. The same action exists in `entur/abt-gha`; keep them identical.
+
 # Workflow usage
 Workflow, java version and runner will naturally change from time to time, so you might consider to
 
