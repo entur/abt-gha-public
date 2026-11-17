@@ -5,10 +5,9 @@ description: >
 
 inputs:
   java-version:
-    description: "Java Runtime Version"
+    description: "Java Runtime Version. A bare major (17, 21, 25) is mapped to the patched build; see the safe-java-version action."
     required: false
-    # CVE-2026-91403: plain '25' resolves to the unfixed 25.0.5+11; 25.0.5+0.3.5 (BellSoft 25.0.5.0.3+5) is the patched Liberica build.
-    default: "25.0.5+0.3.5"
+    default: "25"
   artifactory-auth-user:
     description: "Read-only Artifactory username"
     required: true
@@ -35,10 +34,16 @@ runs:
       with:
         persist-credentials: false
 
-    - name: Set up Java ${{ inputs.java-version }}
-      uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+    - name: Resolve safe Java version
+      id: java
+      uses: $/.github/actions/safe-java-version
       with:
         java-version: ${{ inputs.java-version }}
+        distribution: liberica
+    - name: Set up Java ${{ steps.java.outputs.java-version }}
+      uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+      with:
+        java-version: ${{ steps.java.outputs.java-version }}
         distribution: liberica
         server-id: entur-partner
         server-username: PARTNER_READ_ARTIFACTORY_AUTH_USER

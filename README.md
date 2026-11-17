@@ -74,7 +74,7 @@ publications {
 Upload to Maven central without close/releasing staging repo: Set `tasks` parameter `build publishToSonatype`.
 
 # Safe Java version
-The reusable workflows set up Java through the [`safe-java-version`](.github/actions/safe-java-version/action.yml) action before `actions/setup-java`. It translates the requested Java version and the distribution into a version that is safe to use (CVE-2026-91403, eMudhra CA compromise): a bare major becomes the patched build, a full version is passed through. Apps can keep `java-version: 25` and get the patched JDK.
+The reusable workflows and the Copilot setup actions set up Java through the [`safe-java-version`](.github/actions/safe-java-version/action.yml) action before `actions/setup-java`. It translates the requested Java version and the distribution into a version that is safe to use (CVE-2026-91403, eMudhra CA compromise): a bare major becomes the patched build, a full version is passed through. Apps can keep `java-version: 25` and get the patched JDK.
 
 | Distribution | 17 | 21 | 25 |
 |---|---|---|---|
