@@ -5,10 +5,13 @@ description: >
 
 inputs:
   java-version:
-    description: "Java Runtime Version"
+    description: "Java Runtime Version. A bare major (17, 21, 25) is mapped to the patched build; see the safe-java-version action."
     required: false
-    # CVE-2026-91403: plain '25' resolves to the unfixed 25.0.5+11; 25.0.5+0.3.5 (BellSoft 25.0.5.0.3+5) is the patched Liberica build.
-    default: "25.0.5+0.3.5"
+    default: "25"
+  java-distribution:
+    description: "Java distribution for setup-java: liberica or temurin. Both have patched builds for 17, 21 and 25 (see the safe-java-version action)."
+    required: false
+    default: "liberica"
   artifactory-auth-user:
     description: "Read-only Artifactory username"
     required: true
@@ -26,11 +29,17 @@ runs:
     - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
       with:
         persist-credentials: false
-    - name: Set up JDK ${{ inputs.java-version }}
-      uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+    - name: Resolve safe Java version
+      id: java
+      uses: $/.github/actions/safe-java-version
       with:
         java-version: ${{ inputs.java-version }}
-        distribution: liberica
+        distribution: ${{ inputs.java-distribution }}
+    - name: Set up JDK ${{ steps.java.outputs.java-version }}
+      uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+      with:
+        java-version: ${{ steps.java.outputs.java-version }}
+        distribution: ${{ inputs.java-distribution }}
     - name: Setup Gradle
       uses: gradle/actions/setup-gradle@0723195856401067f7a2779048b490ace7a47d7c # v5.0.2 - do not upgrade to 6 due to licensing issues.
     - name: Set up Buf

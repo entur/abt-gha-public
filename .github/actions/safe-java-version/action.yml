@@ -1,0 +1,147 @@
+name: "Safe Java version"
+description: >
+  Translates a Java version and a setup-java distribution into a version that is safe to use.
+  A bare major (17, 21, 25) is mapped to the patched build for the distribution
+  (CVE-2026-91403, eMudhra CA compromise). Full versions are passed through unchanged.
+  Warns, or fails with fail-if-unpatched, when no patched build is known.
+
+# This is the single place that decides which JDK build is "safe". A twin of this action is
+# maintained in the sibling reusable-workflow repository: keep the pin_for table identical in both.
+#
+# Patched builds
+# --------------
+#   liberica  BellSoft 17.0.21.0.3+5, 21.0.13.0.3+5, 25.0.5.0.3+5 (out-of-band patch builds; the plain
+#             17.0.21+11 / 21.0.13+11 / 25.0.5+11 are NOT patched).
+#   temurin   17.0.21+9, 21.0.13+9.0.LTS, 25.0.5+8.0.LTS. The October 2026 Temurin builds carry the fix:
+#             their trust store is built from Mozilla NSS 3.131.1, which no longer contains the roots that
+#             signed the compromised intermediates (Adoptium, 2026-10-27:
+#             https://adoptium.net/news/2026/10/temurin-october-2026-emudhra). Confirmed by inspecting the
+#             trust store in the self-test. Temurin 11 and 8 were still awaiting upstream tags then, so
+#             they have no patched build here. The same version string can come from different binaries
+#             (a download vs. the runner image's cached copy), so exact pins are worth more than a bare major.
+#
+# Version spelling
+# ----------------
+# actions/setup-java spells BellSoft's x.y.z.a.b+c as x.y.z+a.b.c, so 25.0.5.0.3+5 is "25.0.5+0.3.5".
+# This only works with actions/setup-java >= 6.2.0 (older releases map it to plain x.y.z+c, which
+# matches nothing or the wrong build). The reusable workflows in this repo pin a new enough setup-java.
+#
+# Rolling out a new patched build: edit pin_for below (and the twin action), merge, move the floating tag.
+
+inputs:
+  java-version:
+    description: "Requested Java version: a bare major such as 25, or a full version."
+    required: true
+  distribution:
+    description: "actions/setup-java distribution, e.g. liberica or temurin."
+    required: false
+    default: "liberica"
+  fail-if-unpatched:
+    description: "Fail the step when the resulting version is not a known patched build."
+    required: false
+    default: "false"
+
+outputs:
+  java-version:
+    description: "Version to pass to actions/setup-java."
+    value: ${{ steps.resolve.outputs.java-version }}
+  distribution:
+    description: "Distribution to pass to actions/setup-java (unchanged)."
+    value: ${{ steps.resolve.outputs.distribution }}
+  patched:
+    description: "'true' when java-version is a known patched build for the distribution, otherwise 'false'."
+    value: ${{ steps.resolve.outputs.patched }}
+
+runs:
+  using: composite
+  steps:
+    - name: Resolve safe Java version
+      id: resolve
+      shell: bash
+      env:
+        REQUESTED: ${{ inputs.java-version }}
+        DISTRIBUTION: ${{ inputs.distribution }}
+        FAIL_IF_UNPATCHED: ${{ inputs.fail-if-unpatched }}
+      run: |
+        set -euo pipefail
+
+        # pin_for <distribution> <major>: the patched version string, or nothing if none is known.
+        pin_for() {
+          case "$1:$2" in
+            liberica:17) echo "17.0.21+0.3.5" ;;
+            liberica:21) echo "21.0.13+0.3.5" ;;
+            liberica:25) echo "25.0.5+0.3.5" ;;
+            temurin:17) echo "17.0.21+9" ;;
+            temurin:21) echo "21.0.13+9.0.LTS" ;;
+            temurin:25) echo "25.0.5+8.0.LTS" ;;
+            # temurin 11 / 8: no patched build yet (awaiting upstream tags, per Adoptium).
+          esac
+        }
+
+        fail() {
+          echo "::error title=Safe Java version::$1"
+          exit 1
+        }
+
+        # The inputs end up in $GITHUB_OUTPUT, in workflow commands and in the job summary, so treat
+        # them as untrusted: single line, trimmed, and nothing but a plain version / distribution token.
+        # Never echo a rejected value back.
+        case "$REQUESTED$DISTRIBUTION" in
+          *$'\n'*|*$'\r'*) fail "java-version and distribution must be single-line values" ;;
+        esac
+        trim() {
+          local s="$1"
+          s="${s#"${s%%[![:space:]]*}"}"
+          s="${s%"${s##*[![:space:]]}"}"
+          printf '%s' "$s"
+        }
+        req="$(trim "$REQUESTED")"
+        dist_in="$(trim "$DISTRIBUTION")"
+        valid='^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$'
+        [[ "$req" =~ $valid ]] || fail "java-version must be a version such as 25 or 25.0.5+0.3.5"
+        [[ "$dist_in" =~ $valid ]] || fail "distribution must be a setup-java distribution name such as liberica"
+        dist="$(printf '%s' "$dist_in" | tr '[:upper:]' '[:lower:]')"
+
+        major="${req%%[!0-9]*}"          # leading digits: 25.0.5+0.3.5 -> 25
+        pin="$(pin_for "$dist" "$major")"
+
+        resolved="$req"
+        if [[ "$req" =~ ^[0-9]+$ && -n "$pin" ]]; then
+          resolved="$pin"                # bare major -> patched build
+        fi
+
+        patched=false
+        if [[ -n "$pin" && "$resolved" == "$pin" ]]; then
+          patched=true
+        fi
+
+        case "$dist" in
+          liberica|temurin) known=true ;;
+          *) known=false ;;
+        esac
+
+        if [ "$patched" = true ]; then
+          summary="Java $req ($dist) -> $resolved, patched"
+        elif [ -n "$pin" ]; then
+          summary="Java $resolved ($dist) is NOT the patched build $pin"
+          echo "::warning title=Unpatched JDK::Java $resolved ($dist) is not the patched build $pin (CVE-2026-91403, eMudhra CA compromise). Use java-version: $major to get it."
+        elif [ "$known" = true ]; then
+          summary="Java $resolved ($dist): no patched build is known"
+          echo "::warning title=Unpatched JDK::No patched $dist build is known for Java $major (CVE-2026-91403, eMudhra CA compromise). Use distribution liberica for a patched JDK."
+        else
+          summary="Java $resolved ($dist): distribution not covered, passed through"
+          echo "::warning title=Unpatched JDK::Distribution '$dist' is not covered by the safe-java-version action; Java $resolved is passed through unchanged."
+        fi
+
+        {
+          echo "java-version=$resolved"
+          echo "distribution=$dist_in"
+          echo "patched=$patched"
+        } >> "$GITHUB_OUTPUT"
+        echo "$summary"
+        echo "- $summary" >> "$GITHUB_STEP_SUMMARY"
+
+        if [ "$patched" != true ] && [ "$FAIL_IF_UNPATCHED" = "true" ]; then
+          echo "::error title=Unpatched JDK::$summary (fail-if-unpatched is set)"
+          exit 1
+        fi

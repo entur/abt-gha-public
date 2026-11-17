@@ -1,0 +1,315 @@
+name: Test safe-java-version
+on:
+  pull_request:
+    paths:
+      - ".github/actions/safe-java-version/**"
+      - ".github/workflows/test-safe-java-version.yml"
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  resolve:
+    name: resolve (${{ matrix.distribution }} ${{ matrix.requested }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { distribution: liberica, requested: "25", version: "25.0.5+0.3.5", patched: "true" }
+          - { distribution: liberica, requested: "21", version: "21.0.13+0.3.5", patched: "true" }
+          - { distribution: liberica, requested: "17", version: "17.0.21+0.3.5", patched: "true" }
+          - { distribution: Liberica, requested: "25", version: "25.0.5+0.3.5", patched: "true" }
+          - { distribution: liberica, requested: "25.0.5+0.3.5", version: "25.0.5+0.3.5", patched: "true" }
+          - { distribution: liberica, requested: "25.0.4", version: "25.0.4", patched: "false" }
+          - { distribution: liberica, requested: "11", version: "11", patched: "false" }
+          - { distribution: temurin, requested: "25", version: "25.0.5+8.0.LTS", patched: "true" }
+          - { distribution: temurin, requested: "21", version: "21.0.13+9.0.LTS", patched: "true" }
+          - { distribution: temurin, requested: "17", version: "17.0.21+9", patched: "true" }
+          - { distribution: TEMURIN, requested: "25", version: "25.0.5+8.0.LTS", patched: "true" }
+          - { distribution: temurin, requested: "25.0.3+9.0.LTS", version: "25.0.3+9.0.LTS", patched: "false" }
+          - { distribution: temurin, requested: "11", version: "11", patched: "false" }
+          - { distribution: zulu, requested: "25", version: "25", patched: "false" }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Resolve
+        id: safe
+        uses: ./.github/actions/safe-java-version
+        with:
+          java-version: ${{ matrix.requested }}
+          distribution: ${{ matrix.distribution }}
+      - name: Check outputs
+        env:
+          GOT_VERSION: ${{ steps.safe.outputs.java-version }}
+          GOT_PATCHED: ${{ steps.safe.outputs.patched }}
+          WANT_VERSION: ${{ matrix.version }}
+          WANT_PATCHED: ${{ matrix.patched }}
+        run: |
+          echo "java-version=$GOT_VERSION (want $WANT_VERSION), patched=$GOT_PATCHED (want $WANT_PATCHED)"
+          test "$GOT_VERSION" = "$WANT_VERSION"
+          test "$GOT_PATCHED" = "$WANT_PATCHED"
+
+  fail-if-unpatched:
+    name: fail-if-unpatched
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Resolve temurin 11 (must fail, no patched build)
+        id: unpatched
+        continue-on-error: true
+        uses: ./.github/actions/safe-java-version
+        with:
+          java-version: "11"
+          distribution: temurin
+          fail-if-unpatched: "true"
+      - name: Resolve temurin 25 (must pass, patched build)
+        uses: ./.github/actions/safe-java-version
+        with:
+          java-version: "25"
+          distribution: temurin
+          fail-if-unpatched: "true"
+      - name: Resolve liberica (must pass, patched build)
+        id: patched
+        uses: ./.github/actions/safe-java-version
+        with:
+          java-version: "25"
+          distribution: liberica
+          fail-if-unpatched: "true"
+      - name: Check
+        env:
+          UNPATCHED_OUTCOME: ${{ steps.unpatched.outcome }}
+        run: test "$UNPATCHED_OUTCOME" = "failure"
+
+  reject-invalid:
+    # Inputs are untrusted: anything that is not a plain version / distribution token must fail the
+    # step, produce no outputs, and never reach $GITHUB_OUTPUT or a workflow command.
+    name: reject-invalid (${{ matrix.case.name }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        case:
+          - { name: newline-in-distribution, distribution: "liberica\npatched=true\njava-version=EVIL", requested: "21" }
+          - { name: newline-in-version, distribution: "liberica", requested: "25\njava-version=EVIL" }
+          - { name: echo-option-in-version, distribution: "liberica", requested: "-e '\\n::error::injected'" }
+          - { name: echo-option-in-distribution, distribution: "-e '\\n::warning::injected'", requested: "25" }
+          - { name: command-substitution, distribution: "liberica", requested: "$(id)" }
+          - { name: backticks, distribution: "`id`", requested: "25" }
+          - { name: workflow-command, distribution: "liberica", requested: "::error::injected" }
+          - { name: leading-dash, distribution: "liberica", requested: "--version" }
+          - { name: semicolon, distribution: "liberica;id", requested: "25" }
+          - { name: space-inside, distribution: "liberica", requested: "25 26" }
+          - { name: empty-version, distribution: "liberica", requested: "" }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Resolve (must be rejected)
+        id: bad
+        continue-on-error: true
+        uses: ./.github/actions/safe-java-version
+        with:
+          java-version: ${{ matrix.case.requested }}
+          distribution: ${{ matrix.case.distribution }}
+      - name: Check rejection
+        env:
+          OUTCOME: ${{ steps.bad.outcome }}
+          GOT_VERSION: ${{ steps.bad.outputs.java-version }}
+          GOT_DISTRIBUTION: ${{ steps.bad.outputs.distribution }}
+        run: |
+          echo "outcome=$OUTCOME"
+          test "$OUTCOME" = "failure"
+          test -z "$GOT_VERSION"
+          test -z "$GOT_DISTRIBUTION"
+
+  wiring:
+    # Guard the invariants the rewiring relies on, so a new setup-java step cannot skip the resolver
+    # and nothing hard-codes a distribution again.
+    name: wiring
+    runs-on: ubuntu-24.04
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Every setup-java step uses the resolved version and a distribution input
+        run: |
+          resolver='uses: $/.github/actions/safe-java-version'
+          resolved="java-version: "'$''{{ steps.java.outputs.java-version }}'
+          fail=0
+          for f in .github/workflows/*.yml .github/actions/*/action.yml; do
+            case "$f" in *test-safe-java-version.yml|*safe-java-version/action.yml) continue ;; esac
+            n_java="$(grep -c 'uses: actions/setup-java@' "$f" || true)"
+            [ "$n_java" -gt 0 ] || continue
+            n_resolver="$(grep -cF "$resolver" "$f" || true)"
+            n_resolved="$(grep -cF "$resolved" "$f" || true)"
+            n_hard="$(grep -cE 'distribution: (liberica|temurin)' "$f" || true)"
+            echo "$f: setup-java=$n_java resolver=$n_resolver resolved-version=$n_resolved hard-coded-distribution=$n_hard"
+            if [ "$n_resolver" != "$n_java" ] || [ "$n_resolved" != "$n_java" ] || [ "$n_hard" != 0 ]; then
+              echo "::error file=$f::every setup-java step needs a safe-java-version step before it, must use its output, and must take the distribution from an input"
+              fail=1
+            fi
+          done
+          exit "$fail"
+      - name: Every java-distribution input defaults to liberica
+        run: |
+          fail=0
+          for f in .github/workflows/*.yml .github/actions/*/action.yml; do
+            case "$f" in *test-safe-java-version.yml|*safe-java-version/action.yml) continue ;; esac
+            grep -qE '^ +java-distribution:[ ]*$' "$f" || continue
+            if ! awk '/^ +java-distribution:[ ]*$/ { found=1; ok=0; n=0; next }
+                      found { n++; if ($0 ~ /default: "liberica"/) ok=1; if (n >= 6) { if (!ok) bad=1; found=0 } }
+                      END { exit bad }' "$f"; then
+              echo "::error file=$f::java-distribution must default to liberica"
+              fail=1
+            fi
+          done
+          exit "$fail"
+
+  truststore:
+    # What actually matters: does the JDK that runs distrust the roots that signed the compromised
+    # eMudhra intermediates? Inspect the trust store itself instead of trusting version strings.
+    # The unfixed Liberica control must still trust them, which proves the check can tell the difference.
+    name: truststore (${{ matrix.label }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { label: liberica-25, distribution: liberica, requested: "25", expect: absent, check_aaa: "false" }
+          - { label: liberica-21, distribution: liberica, requested: "21", expect: absent, check_aaa: "false" }
+          - { label: liberica-17, distribution: liberica, requested: "17", expect: absent, check_aaa: "false" }
+          - { label: liberica-25-unfixed-control, distribution: liberica, requested: "25.0.5+11", expect: present, check_aaa: "false" }
+          - { label: temurin-25, distribution: temurin, requested: "25", expect: absent, check_aaa: "true" }
+          - { label: temurin-21, distribution: temurin, requested: "21", expect: absent, check_aaa: "true" }
+          - { label: temurin-17, distribution: temurin, requested: "17", expect: absent, check_aaa: "true" }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Resolve
+        id: safe
+        uses: ./.github/actions/safe-java-version
+        with:
+          java-version: ${{ matrix.requested }}
+          distribution: ${{ matrix.distribution }}
+      - name: Set up Java ${{ steps.safe.outputs.java-version }}
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          java-version: ${{ steps.safe.outputs.java-version }}
+          distribution: ${{ steps.safe.outputs.distribution }}
+      - name: Inspect the trust store
+        env:
+          LABEL: ${{ matrix.label }}
+          EXPECT: ${{ matrix.expect }}
+          CHECK_AAA: ${{ matrix.check_aaa }}
+        run: |
+          runtime="$(java -XshowSettings:properties -version 2>&1 | sed -n 's/^ *java.runtime.version = //p')"
+          owners="$(keytool -list -v -cacerts -storepass changeit 2>/dev/null | sed -n 's/^Owner: //p')"
+          g3="$(printf '%s\n' "$owners" | grep -ci 'CN=emSign ECC Root CA - G3' || true)"
+          aaa="$(printf '%s\n' "$owners" | grep -ci 'CN=AAA Certificate Services' || true)"
+          echo "TRUSTSTORE label=$LABEL runtime=$runtime emSignECCRootG3=$g3 AAACertificateServices=$aaa roots=$(printf '%s\n' "$owners" | grep -c .) expect=$EXPECT"
+          if [ "$EXPECT" = absent ]; then
+            test "$g3" = 0
+            if [ "$CHECK_AAA" = true ]; then test "$aaa" = 0; fi
+          else
+            test "$g3" != 0
+          fi
+
+  runner-default:
+    # The JDKs preinstalled on the runner image, used as-is when a job does not call setup-java.
+    # Report only: this depends on GitHub's image, not on this repository.
+    name: runner-default (JAVA_HOME_${{ matrix.major }}_X64)
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        major: ["17", "21", "25"]
+    steps:
+      - name: Inspect the trust store
+        env:
+          MAJOR: ${{ matrix.major }}
+        run: |
+          home_var="JAVA_HOME_${MAJOR}_X64"
+          home="${!home_var}"
+          runtime="$("$home/bin/java" -XshowSettings:properties -version 2>&1 | sed -n 's/^ *java.runtime.version = //p')"
+          owners="$("$home/bin/keytool" -list -v -cacerts -storepass changeit 2>/dev/null | sed -n 's/^Owner: //p')"
+          g3="$(printf '%s\n' "$owners" | grep -ci 'CN=emSign ECC Root CA - G3' || true)"
+          aaa="$(printf '%s\n' "$owners" | grep -ci 'CN=AAA Certificate Services' || true)"
+          echo "TRUSTSTORE label=runner-default-$MAJOR home=$home runtime=$runtime emSignECCRootG3=$g3 AAACertificateServices=$aaa roots=$(printf '%s\n' "$owners" | grep -c .)"
+          if [ "$g3" != 0 ] || [ "$aaa" != 0 ]; then
+            echo "::warning title=Runner image JDK trusts a compromised root::$home ($runtime) still trusts emSign ECC Root CA - G3 / AAA Certificate Services"
+          fi
+
+  truststore-bare-major:
+    # What a caller gets from setup-java with a bare major and NO safe-java-version: it can resolve to
+    # a copy cached on the runner image, whose contents depend on when the image was built. Report only.
+    name: truststore-bare-major (${{ matrix.distribution }} ${{ matrix.major }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        distribution: [temurin]
+        major: ["17", "21", "25"]
+    steps:
+      - name: Set up Java ${{ matrix.major }}
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          java-version: ${{ matrix.major }}
+          distribution: ${{ matrix.distribution }}
+      - name: Inspect the trust store
+        env:
+          LABEL: ${{ matrix.distribution }}-${{ matrix.major }}-bare
+        run: |
+          runtime="$(java -XshowSettings:properties -version 2>&1 | sed -n 's/^ *java.runtime.version = //p')"
+          owners="$(keytool -list -v -cacerts -storepass changeit 2>/dev/null | sed -n 's/^Owner: //p')"
+          g3="$(printf '%s\n' "$owners" | grep -ci 'CN=emSign ECC Root CA - G3' || true)"
+          aaa="$(printf '%s\n' "$owners" | grep -ci 'CN=AAA Certificate Services' || true)"
+          echo "TRUSTSTORE label=$LABEL java_home=$JAVA_HOME runtime=$runtime emSignECCRootG3=$g3 AAACertificateServices=$aaa"
+          if [ "$g3" != 0 ] || [ "$aaa" != 0 ]; then
+            echo "::warning title=Bare major resolved to an unpatched JDK::$LABEL ($runtime) still trusts emSign ECC Root CA - G3 / AAA Certificate Services"
+          fi
+
+  setup-java:
+    # The whole chain: resolved version -> actions/setup-java -> the JDK that actually runs.
+    name: setup-java (${{ matrix.distribution }} ${{ matrix.requested }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { distribution: liberica, requested: "25", runtime: "25.0.5.0.3+5" }
+          - { distribution: liberica, requested: "21", runtime: "21.0.13.0.3+5" }
+          - { distribution: liberica, requested: "17", runtime: "17.0.21.0.3+5" }
+          - { distribution: temurin, requested: "25", runtime: "25.0.5+8" }
+          - { distribution: temurin, requested: "21", runtime: "21.0.13+9" }
+          - { distribution: temurin, requested: "17", runtime: "17.0.21+9" }
+    steps:
+      - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
+        with:
+          persist-credentials: false
+      - name: Resolve
+        id: safe
+        uses: ./.github/actions/safe-java-version
+        with:
+          java-version: ${{ matrix.requested }}
+          distribution: ${{ matrix.distribution }}
+      - name: Set up Java ${{ steps.safe.outputs.java-version }}
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          java-version: ${{ steps.safe.outputs.java-version }}
+          distribution: ${{ steps.safe.outputs.distribution }}
+      - name: Check the JDK that was installed
+        env:
+          WANT_RUNTIME: ${{ matrix.runtime }}
+        run: |
+          java -XshowSettings:properties -version 2>&1 | grep -E "java.runtime.version|java.vendor =|java.version =" || true
+          got="$(java -XshowSettings:properties -version 2>&1 | sed -n 's/^ *java.runtime.version = //p')"
+          echo "java.runtime.version=$got (want prefix: ${WANT_RUNTIME:-none})"
+          if [ -n "$WANT_RUNTIME" ]; then
+            case "$got" in "$WANT_RUNTIME"*) ;; *) echo "::error::expected a runtime starting with $WANT_RUNTIME"; exit 1 ;; esac
+          fi
