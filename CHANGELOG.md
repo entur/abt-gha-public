@@ -10,7 +10,7 @@ Changes before v1.36 are not listed; see the git history and tags.
 
 ### Added
 - `cd`: when the Terraform plan has changes, the changelog Slack message links to the plan job, with the add/change/destroy counts.
-- `safe-java-version` action: translates a Java version and a `setup-java` distribution into a safe version. A bare major (`17`, `21`, `25`) on Liberica becomes the patched build (`17.0.21+0.3.5`, `21.0.13+0.3.5`, `25.0.5+0.3.5`; CVE-2026-91403); full versions are passed through. Temurin has no patched build, so it is passed through with a warning, or fails with `fail-if-unpatched: true`. Covered by the `Test safe-java-version` workflow.
+- `safe-java-version` action: translates a Java version and a `setup-java` distribution into a safe version. A bare major (`17`, `21`, `25`) on Liberica becomes the patched build (`17.0.21+0.3.5`, `21.0.13+0.3.5`, `25.0.5+0.3.5`; CVE-2026-91403); full versions are passed through. Temurin maps to `17.0.21+9`, `21.0.13+9.0.LTS` and `25.0.5+8.0.LTS` (the October 2026 builds carry the fix). Versions with no patched build (Temurin 11 and 8) and other distributions are passed through with a warning, or fail with `fail-if-unpatched: true`. Covered by the `Test safe-java-version` workflow, which also inspects the trust store of each JDK.
 
 ### Removed
 - Reusable workflows with no known callers (#67): `gradle-release-sona`, `gradle-release-tag-sona`, `maven-release-sona`, `validate-jar-gradle-sona`, `validate-jar-maven-sona`, `notify-changelog`, `helm-deploy`.

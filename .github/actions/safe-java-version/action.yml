@@ -12,9 +12,13 @@ description: >
 # --------------
 #   liberica  BellSoft 17.0.21.0.3+5, 21.0.13.0.3+5, 25.0.5.0.3+5 (out-of-band patch builds; the plain
 #             17.0.21+11 / 21.0.13+11 / 25.0.5+11 are NOT patched).
-#   temurin   none known. The newest Temurin builds (17.0.21+9, 21.0.13+9.0.LTS, 25.0.5+8.0.LTS) were
-#             released 2026-10-22 (Adoptium), before the compromise was reported, and nothing newer
-#             was published as of 2026-11-17. Temurin is therefore passed through with a warning.
+#   temurin   17.0.21+9, 21.0.13+9.0.LTS, 25.0.5+8.0.LTS. The October 2026 Temurin builds carry the fix:
+#             their trust store is built from Mozilla NSS 3.131.1, which no longer contains the roots that
+#             signed the compromised intermediates (Adoptium, 2026-10-27:
+#             https://adoptium.net/news/2026/10/temurin-october-2026-emudhra). Confirmed by inspecting the
+#             trust store in the self-test. Temurin 11 and 8 were still awaiting upstream tags then, so
+#             they have no patched build here. The same version string can come from different binaries
+#             (a download vs. the runner image's cached copy), so exact pins are worth more than a bare major.
 #
 # Version spelling
 # ----------------
@@ -67,7 +71,10 @@ runs:
             liberica:17) echo "17.0.21+0.3.5" ;;
             liberica:21) echo "21.0.13+0.3.5" ;;
             liberica:25) echo "25.0.5+0.3.5" ;;
-            # temurin: no patched build published yet. Add e.g. "temurin:25) echo ..." when there is one.
+            temurin:17) echo "17.0.21+9" ;;
+            temurin:21) echo "21.0.13+9.0.LTS" ;;
+            temurin:25) echo "25.0.5+8.0.LTS" ;;
+            # temurin 11 / 8: no patched build yet (awaiting upstream tags, per Adoptium).
           esac
         }
 

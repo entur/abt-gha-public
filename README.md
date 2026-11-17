@@ -79,9 +79,11 @@ The reusable workflows and the Copilot setup actions set up Java through the [`s
 | Distribution | 17 | 21 | 25 |
 |---|---|---|---|
 | `liberica` | `17.0.21+0.3.5` | `21.0.13+0.3.5` | `25.0.5+0.3.5` |
-| `temurin` | no patched build | no patched build | no patched build |
+| `temurin` | `17.0.21+9` | `21.0.13+9.0.LTS` | `25.0.5+8.0.LTS` |
 
-Temurin has no patched build yet (the newest, 17.0.21+9 / 21.0.13+9.0.LTS / 25.0.5+8.0.LTS, were released 2026-10-22, before the compromise). The version is passed through and the step warns; `fail-if-unpatched: true` fails the step instead. Other distributions are passed through with a warning.
+Temurin: the October 2026 builds carry the fix. Adoptium's [announcement](https://adoptium.net/news/2026/10/temurin-october-2026-emudhra) says their trust store (built from Mozilla NSS 3.131.1) no longer contains the roots that signed the compromised intermediates, and the self-test confirms it by inspecting each JDK's trust store. Temurin 11 and 8 had no patched build when this was written, and Temurin keeps `emSign Root CA - G1`, which Mozilla still trusts. A bare major is mapped to an exact pin because the same Temurin version string can come from different binaries (a download, or a copy cached on the runner image).
+
+A version with no patched build, and any other distribution, is passed through and the step warns; `fail-if-unpatched: true` fails the step instead.
 
 In your own workflow:
 

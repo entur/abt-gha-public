@@ -24,8 +24,12 @@ jobs:
           - { distribution: liberica, requested: "25.0.5+0.3.5", version: "25.0.5+0.3.5", patched: "true" }
           - { distribution: liberica, requested: "25.0.4", version: "25.0.4", patched: "false" }
           - { distribution: liberica, requested: "11", version: "11", patched: "false" }
-          - { distribution: temurin, requested: "25", version: "25", patched: "false" }
-          - { distribution: temurin, requested: "21", version: "21", patched: "false" }
+          - { distribution: temurin, requested: "25", version: "25.0.5+8.0.LTS", patched: "true" }
+          - { distribution: temurin, requested: "21", version: "21.0.13+9.0.LTS", patched: "true" }
+          - { distribution: temurin, requested: "17", version: "17.0.21+9", patched: "true" }
+          - { distribution: TEMURIN, requested: "25", version: "25.0.5+8.0.LTS", patched: "true" }
+          - { distribution: temurin, requested: "25.0.3+9.0.LTS", version: "25.0.3+9.0.LTS", patched: "false" }
+          - { distribution: temurin, requested: "11", version: "11", patched: "false" }
           - { distribution: zulu, requested: "25", version: "25", patched: "false" }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
@@ -55,9 +59,15 @@ jobs:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
           persist-credentials: false
-      - name: Resolve temurin (must fail, no patched build)
+      - name: Resolve temurin 11 (must fail, no patched build)
         id: unpatched
         continue-on-error: true
+        uses: ./.github/actions/safe-java-version
+        with:
+          java-version: "11"
+          distribution: temurin
+          fail-if-unpatched: "true"
+      - name: Resolve temurin 25 (must pass, patched build)
         uses: ./.github/actions/safe-java-version
         with:
           java-version: "25"
@@ -120,20 +130,20 @@ jobs:
   truststore:
     # What actually matters: does the JDK that runs distrust the roots that signed the compromised
     # eMudhra intermediates? Inspect the trust store itself instead of trusting version strings.
+    # The unfixed Liberica control must still trust them, which proves the check can tell the difference.
     name: truststore (${{ matrix.label }})
     runs-on: ubuntu-24.04
     strategy:
       fail-fast: false
       matrix:
         include:
-          - { label: liberica-25, distribution: liberica, requested: "25" }
-          - { label: liberica-21, distribution: liberica, requested: "21" }
-          - { label: liberica-17, distribution: liberica, requested: "17" }
-          - { label: liberica-25-unfixed-control, distribution: liberica, requested: "25.0.5+11" }
-          - { label: temurin-25.0.5+8, distribution: temurin, requested: "25.0.5+8.0.LTS" }
-          - { label: temurin-21.0.13+9, distribution: temurin, requested: "21.0.13+9.0.LTS" }
-          - { label: temurin-17.0.21+9, distribution: temurin, requested: "17.0.21+9" }
-          - { label: temurin-25-floating, distribution: temurin, requested: "25" }
+          - { label: liberica-25, distribution: liberica, requested: "25", expect: absent, check_aaa: "false" }
+          - { label: liberica-21, distribution: liberica, requested: "21", expect: absent, check_aaa: "false" }
+          - { label: liberica-17, distribution: liberica, requested: "17", expect: absent, check_aaa: "false" }
+          - { label: liberica-25-unfixed-control, distribution: liberica, requested: "25.0.5+11", expect: present, check_aaa: "false" }
+          - { label: temurin-25, distribution: temurin, requested: "25", expect: absent, check_aaa: "true" }
+          - { label: temurin-21, distribution: temurin, requested: "21", expect: absent, check_aaa: "true" }
+          - { label: temurin-17, distribution: temurin, requested: "17", expect: absent, check_aaa: "true" }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -152,15 +162,24 @@ jobs:
       - name: Inspect the trust store
         env:
           LABEL: ${{ matrix.label }}
+          EXPECT: ${{ matrix.expect }}
+          CHECK_AAA: ${{ matrix.check_aaa }}
         run: |
           runtime="$(java -XshowSettings:properties -version 2>&1 | sed -n 's/^ *java.runtime.version = //p')"
           owners="$(keytool -list -v -cacerts -storepass changeit 2>/dev/null | sed -n 's/^Owner: //p')"
           g3="$(printf '%s\n' "$owners" | grep -ci 'CN=emSign ECC Root CA - G3' || true)"
           aaa="$(printf '%s\n' "$owners" | grep -ci 'CN=AAA Certificate Services' || true)"
-          echo "TRUSTSTORE label=$LABEL runtime=$runtime emSignECCRootG3=$g3 AAACertificateServices=$aaa roots=$(printf '%s\n' "$owners" | grep -c .)"
+          echo "TRUSTSTORE label=$LABEL runtime=$runtime emSignECCRootG3=$g3 AAACertificateServices=$aaa roots=$(printf '%s\n' "$owners" | grep -c .) expect=$EXPECT"
+          if [ "$EXPECT" = absent ]; then
+            test "$g3" = 0
+            if [ "$CHECK_AAA" = true ]; then test "$aaa" = 0; fi
+          else
+            test "$g3" != 0
+          fi
 
   runner-default:
     # The JDKs preinstalled on the runner image, used as-is when a job does not call setup-java.
+    # Report only: this depends on GitHub's image, not on this repository.
     name: runner-default (JAVA_HOME_${{ matrix.major }}_X64)
     runs-on: ubuntu-24.04
     strategy:
@@ -179,6 +198,38 @@ jobs:
           g3="$(printf '%s\n' "$owners" | grep -ci 'CN=emSign ECC Root CA - G3' || true)"
           aaa="$(printf '%s\n' "$owners" | grep -ci 'CN=AAA Certificate Services' || true)"
           echo "TRUSTSTORE label=runner-default-$MAJOR home=$home runtime=$runtime emSignECCRootG3=$g3 AAACertificateServices=$aaa roots=$(printf '%s\n' "$owners" | grep -c .)"
+          if [ "$g3" != 0 ] || [ "$aaa" != 0 ]; then
+            echo "::warning title=Runner image JDK trusts a compromised root::$home ($runtime) still trusts emSign ECC Root CA - G3 / AAA Certificate Services"
+          fi
+
+  truststore-bare-major:
+    # What a caller gets from setup-java with a bare major and NO safe-java-version: it can resolve to
+    # a copy cached on the runner image, whose contents depend on when the image was built. Report only.
+    name: truststore-bare-major (${{ matrix.distribution }} ${{ matrix.major }})
+    runs-on: ubuntu-24.04
+    strategy:
+      fail-fast: false
+      matrix:
+        distribution: [temurin]
+        major: ["17", "21", "25"]
+    steps:
+      - name: Set up Java ${{ matrix.major }}
+        uses: actions/setup-java@d1374f8ac74474200d16ef8ecee22c7ae7a51880 # v6.3.0
+        with:
+          java-version: ${{ matrix.major }}
+          distribution: ${{ matrix.distribution }}
+      - name: Inspect the trust store
+        env:
+          LABEL: ${{ matrix.distribution }}-${{ matrix.major }}-bare
+        run: |
+          runtime="$(java -XshowSettings:properties -version 2>&1 | sed -n 's/^ *java.runtime.version = //p')"
+          owners="$(keytool -list -v -cacerts -storepass changeit 2>/dev/null | sed -n 's/^Owner: //p')"
+          g3="$(printf '%s\n' "$owners" | grep -ci 'CN=emSign ECC Root CA - G3' || true)"
+          aaa="$(printf '%s\n' "$owners" | grep -ci 'CN=AAA Certificate Services' || true)"
+          echo "TRUSTSTORE label=$LABEL java_home=$JAVA_HOME runtime=$runtime emSignECCRootG3=$g3 AAACertificateServices=$aaa"
+          if [ "$g3" != 0 ] || [ "$aaa" != 0 ]; then
+            echo "::warning title=Bare major resolved to an unpatched JDK::$LABEL ($runtime) still trusts emSign ECC Root CA - G3 / AAA Certificate Services"
+          fi
 
   setup-java:
     # The whole chain: resolved version -> actions/setup-java -> the JDK that actually runs.
@@ -191,7 +242,9 @@ jobs:
           - { distribution: liberica, requested: "25", runtime: "25.0.5.0.3+5" }
           - { distribution: liberica, requested: "21", runtime: "21.0.13.0.3+5" }
           - { distribution: liberica, requested: "17", runtime: "17.0.21.0.3+5" }
-          - { distribution: temurin, requested: "25", runtime: "" }
+          - { distribution: temurin, requested: "25", runtime: "25.0.5+8" }
+          - { distribution: temurin, requested: "21", runtime: "21.0.13+9" }
+          - { distribution: temurin, requested: "17", runtime: "17.0.21+9" }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
