@@ -5,8 +5,8 @@ description: >
   (CVE-2026-91403, eMudhra CA compromise). Full versions are passed through unchanged.
   Warns, or fails with fail-if-unpatched, when no patched build is known.
 
-# This is the single place that decides which JDK build is "safe". The same action lives in
-# entur/abt-gha and entur/abt-gha-public: keep the pin_for table identical in both.
+# This is the single place that decides which JDK build is "safe". A twin of this action is
+# maintained in the sibling reusable-workflow repository: keep the pin_for table identical in both.
 #
 # Patched builds
 # --------------
@@ -71,12 +71,29 @@ runs:
           esac
         }
 
-        dist="$(printf '%s' "$DISTRIBUTION" | tr '[:upper:]' '[:lower:]' | xargs)"
-        req="$(printf '%s' "$REQUESTED" | xargs)"
-        if [ -z "$req" ]; then
-          echo "::error title=Safe Java version::java-version is empty"
+        fail() {
+          echo "::error title=Safe Java version::$1"
           exit 1
-        fi
+        }
+
+        # The inputs end up in $GITHUB_OUTPUT, in workflow commands and in the job summary, so treat
+        # them as untrusted: single line, trimmed, and nothing but a plain version / distribution token.
+        # Never echo a rejected value back.
+        case "$REQUESTED$DISTRIBUTION" in
+          *$'\n'*|*$'\r'*) fail "java-version and distribution must be single-line values" ;;
+        esac
+        trim() {
+          local s="$1"
+          s="${s#"${s%%[![:space:]]*}"}"
+          s="${s%"${s##*[![:space:]]}"}"
+          printf '%s' "$s"
+        }
+        req="$(trim "$REQUESTED")"
+        dist_in="$(trim "$DISTRIBUTION")"
+        valid='^[A-Za-z0-9][A-Za-z0-9._+-]{0,63}$'
+        [[ "$req" =~ $valid ]] || fail "java-version must be a version such as 25 or 25.0.5+0.3.5"
+        [[ "$dist_in" =~ $valid ]] || fail "distribution must be a setup-java distribution name such as liberica"
+        dist="$(printf '%s' "$dist_in" | tr '[:upper:]' '[:lower:]')"
 
         major="${req%%[!0-9]*}"          # leading digits: 25.0.5+0.3.5 -> 25
         pin="$(pin_for "$dist" "$major")"
@@ -111,7 +128,7 @@ runs:
 
         {
           echo "java-version=$resolved"
-          echo "distribution=$DISTRIBUTION"
+          echo "distribution=$dist_in"
           echo "patched=$patched"
         } >> "$GITHUB_OUTPUT"
         echo "$summary"

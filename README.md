@@ -97,7 +97,7 @@ In your own workflow:
     distribution: ${{ steps.java.outputs.distribution }}
 ```
 
-`actions/setup-java` must be at least v6.2.0: it spells BellSoft's `25.0.5.0.3+5` as `25.0.5+0.3.5`, older releases do not. Outputs: `java-version`, `distribution`, `patched`. The table is the `pin_for` function in the action. The same action exists in `entur/abt-gha`; keep them identical.
+`actions/setup-java` must be at least v6.2.0: it spells BellSoft's `25.0.5.0.3+5` as `25.0.5+0.3.5`, older releases do not. Outputs: `java-version`, `distribution`, `patched`. The table is the `pin_for` function in the action. A twin of the action is maintained in the sibling internal repository; keep them identical.
 
 # Workflow usage
 Workflow, java version and runner will naturally change from time to time, so you might consider to
