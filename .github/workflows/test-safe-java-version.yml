@@ -187,6 +187,14 @@ jobs:
           - { label: temurin-25, distribution: temurin, requested: "25", expect: absent, check_aaa: "true" }
           - { label: temurin-21, distribution: temurin, requested: "21", expect: absent, check_aaa: "true" }
           - { label: temurin-17, distribution: temurin, requested: "17", expect: absent, check_aaa: "true" }
+          - { label: liberica-11-candidate, distribution: liberica, requested: "11.0.33+0.3.7", expect: report, check_aaa: "false" }
+          - { label: liberica-11-older-control, distribution: liberica, requested: "11.0.33+11", expect: report, check_aaa: "false" }
+          - { label: temurin-11-candidate, distribution: temurin, requested: "11.0.33+10", expect: report, check_aaa: "true" }
+          - { label: temurin-11-older-control, distribution: temurin, requested: "11.0.32+9", expect: report, check_aaa: "true" }
+          - { label: temurin-8-candidate, distribution: temurin, requested: "8.0.512+9", expect: report, check_aaa: "true" }
+          - { label: temurin-8-older-control, distribution: temurin, requested: "8.0.504+1", expect: report, check_aaa: "true" }
+          - { label: liberica-8-candidate, distribution: liberica, requested: "8.0.513+9", expect: report, check_aaa: "false" }
+          - { label: liberica-8-older-control, distribution: liberica, requested: "8.0.512+11", expect: report, check_aaa: "false" }
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
         with:
@@ -209,11 +217,14 @@ jobs:
           CHECK_AAA: ${{ matrix.check_aaa }}
         run: |
           runtime="$(java -XshowSettings:properties -version 2>&1 | sed -n 's/^ *java.runtime.version = //p')"
-          owners="$(keytool -list -v -cacerts -storepass changeit 2>/dev/null | sed -n 's/^Owner: //p')"
+          if keytool -list -cacerts -storepass changeit >/dev/null 2>&1; then ks="-cacerts"; else ks="-keystore $JAVA_HOME/jre/lib/security/cacerts"; fi
+          owners="$(keytool -list -v $ks -storepass changeit 2>/dev/null | sed -n 's/^Owner: //p')"
           g3="$(printf '%s\n' "$owners" | grep -ci 'CN=emSign ECC Root CA - G3' || true)"
           aaa="$(printf '%s\n' "$owners" | grep -ci 'CN=AAA Certificate Services' || true)"
           echo "TRUSTSTORE label=$LABEL runtime=$runtime emSignECCRootG3=$g3 AAACertificateServices=$aaa roots=$(printf '%s\n' "$owners" | grep -c .) expect=$EXPECT"
-          if [ "$EXPECT" = absent ]; then
+          if [ "$EXPECT" = report ]; then
+            exit 0
+          elif [ "$EXPECT" = absent ]; then
             test "$g3" = 0
             if [ "$CHECK_AAA" = true ]; then test "$aaa" = 0; fi
           else
