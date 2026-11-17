@@ -51,7 +51,7 @@ jobs:
     runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@3d3c42e5aac5ba805825da76410c181273ba90b1 # v7.0.1
-      - name: Resolve (must fail: no patched Temurin)
+      - name: Resolve temurin (must fail, no patched build)
         id: unpatched
         continue-on-error: true
         uses: ./.github/actions/safe-java-version
@@ -59,7 +59,7 @@ jobs:
           java-version: "25"
           distribution: temurin
           fail-if-unpatched: "true"
-      - name: Resolve (must pass: patched Liberica)
+      - name: Resolve liberica (must pass, patched build)
         id: patched
         uses: ./.github/actions/safe-java-version
         with:
