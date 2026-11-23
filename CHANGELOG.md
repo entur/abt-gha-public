@@ -18,6 +18,7 @@ Changes before v1.36 are not listed; see the git history and tags.
 - The manual, on-tag and on-main release sections of the README, which documented the removed open-source release workflows (#68).
 
 ### Changed
+- `validate-jar-maven` and `auto-merge` declare their secrets (`ARTIFACTORY_AUTH_USER`, `ARTIFACTORY_AUTH_TOKEN`, `SLACK_BOT_TOKEN`; all optional), so callers can pass them explicitly instead of `secrets: inherit`. `validate-jar-maven` passes only `SLACK_BOT_TOKEN` on to `auto-merge`. Existing callers using `secrets: inherit` keep working.
 - Runners: `ubuntu-latest` → `ubuntu-24.04` (#69).
 - Same-repository action and workflow references use the `$/` self-repository syntax (requires runner 2.336.0 or newer), replacing branch and relative refs (#72).
 - Reduced the number of Maven Central releases triggered by bot updates: `maybe-release-bot-updates-maven` and `-gradle` (#52).

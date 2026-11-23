@@ -1,6 +1,16 @@
 name: validate-maven
 on:
   workflow_call:
+    secrets:
+      ARTIFACTORY_AUTH_USER:
+        description: "Artifactory username used to download Maven dependencies"
+        required: false
+      ARTIFACTORY_AUTH_TOKEN:
+        description: "Artifactory token used to download Maven dependencies"
+        required: false
+      SLACK_BOT_TOKEN:
+        description: "Slack bot token for auto-merge notifications"
+        required: false
     inputs:
       java-version:
         description: "Java Runtime Version. A bare major (17, 21, 25) is mapped to the patched build; see the safe-java-version action."
@@ -141,7 +151,8 @@ jobs:
   auto-merge-if-dependabot-not-major:
     needs: validate-maven-build
     uses: $/.github/workflows/auto-merge.yml
-    secrets: inherit
+    secrets:
+      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
     if: >
       success() && inputs.automerge-dependabot == 'true' &&
       github.event.pull_request.user.login == 'dependabot[bot]' &&
