@@ -3,6 +3,10 @@ name: Maybe release bot updates - Maven
 # optionally dispatches the target workflow when a release is warranted.
 on:
   workflow_call:
+    secrets:
+      SLACK_BOT_TOKEN:
+        description: "Slack bot token for notifications"
+        required: false
     inputs:
       workflow:
         description: "Workflow filename to dispatch when a release is warranted (e.g. maven-release.yml)."
