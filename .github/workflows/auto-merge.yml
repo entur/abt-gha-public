@@ -1,6 +1,10 @@
 name: Auto Merge
 on:
   workflow_call:
+    secrets:
+      SLACK_BOT_TOKEN:
+        description: "Slack bot token for notifications"
+        required: false
     inputs:
       dry-run:
         description: "When true, the workflow reports what it would merge but does not actually call `gh pr merge`."
