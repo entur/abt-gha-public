@@ -4,6 +4,10 @@
 name: Docker Build Publish
 on:
   workflow_call:
+    secrets:
+      SLACK_BOT_TOKEN:
+        description: "Slack bot token for notifications"
+        required: false
     inputs:
       dry-run:
         description: If true, perform all actions apart from publish

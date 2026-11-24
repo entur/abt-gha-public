@@ -1,6 +1,16 @@
 name: Build Jar Gradle
 on:
   workflow_call:
+    secrets:
+      ARTIFACTORY_AUTH_USER:
+        description: "Artifactory username used to download dependencies"
+        required: false
+      ARTIFACTORY_AUTH_TOKEN:
+        description: "Artifactory token used to download dependencies"
+        required: false
+      SLACK_BOT_TOKEN:
+        description: "Slack bot token for notifications"
+        required: false
     inputs:
       java-version:
         description: "Java Runtime Version. A bare major (17, 21, 25) is mapped to the patched build; see the safe-java-version action."

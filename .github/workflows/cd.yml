@@ -6,6 +6,16 @@ name: CD
 
 on:
   workflow_call:
+    secrets:
+      GITDAILIES_WEBHOOK_KEY:
+        description: "Gitdailies webhook key used by the Helm deploy"
+        required: false
+      GRAFANA_CLOUD_API_TOKEN:
+        description: "Grafana Cloud API token used by the Helm deploy"
+        required: false
+      SLACK_BOT_TOKEN:
+        description: "Slack bot token for notifications"
+        required: false
     inputs:
       environment:
         description: Environment to deploy to (dev/tst/prd)
