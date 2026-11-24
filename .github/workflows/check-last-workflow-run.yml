@@ -4,6 +4,10 @@ name: Check Last Workflow Run
 # recently, indicating a library may be overdue for a release.
 on:
   workflow_call:
+    secrets:
+      SLACK_BOT_TOKEN:
+        description: "Slack bot token for notifications"
+        required: false
     inputs:
       workflow:
         description: "Workflow filename to check (e.g. release-main.yml)."
