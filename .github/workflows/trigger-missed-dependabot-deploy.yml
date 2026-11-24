@@ -5,6 +5,10 @@ name: Trigger Missed Dependabot Deploy
 # dependabot commit with no run of the target deploy workflow, dispatches it.
 on:
   workflow_call:
+    secrets:
+      SLACK_BOT_TOKEN:
+        description: "Slack bot token for notifications"
+        required: false
     inputs:
       target-workflow:
         description: "Workflow filename to dispatch when a missed deploy is detected (e.g. deploy-main.yml)."
