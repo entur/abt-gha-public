@@ -145,8 +145,7 @@ jobs:
       message: |
         🔵 ${{ github.repository }} - Triggered dependabot deploy on ${{ inputs.target-ref }}
         ${{ needs.check-and-trigger.outputs.commits }}
-    secrets:
-      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+    secrets: inherit
 
   post-fail-to-slack-if-fail:
     needs: check-and-trigger
@@ -155,5 +154,4 @@ jobs:
     with:
       channel_id: ${{ inputs.channel-id }}
       message: "⚫ ${{ github.repository }} - Trigger missed dependabot deploy failed on ${{ inputs.target-ref }}"
-    secrets:
-      SLACK_BOT_TOKEN: ${{ secrets.SLACK_BOT_TOKEN }}
+    secrets: inherit
