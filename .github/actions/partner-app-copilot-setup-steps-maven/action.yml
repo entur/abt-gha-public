@@ -53,10 +53,9 @@ runs:
         server-username: PARTNER_READ_ARTIFACTORY_AUTH_USER
         server-password: PARTNER_READ_ARTIFACTORY_AUTH_TOKEN
 
-    - name: Load Maven cache
-      uses: $/.github/actions/load-maven-cache
-      with:
-        save: ${{ inputs.saveCache }}
+    - name: Maven restore cache
+      id: maven-cache
+      uses: $/.github/actions/maven-restore-cache
 
     - name: Set up Buf
       if: inputs.setup-buf == 'true'
@@ -82,3 +81,10 @@ runs:
       if: inputs.setup-buf == 'true'
       shell: bash
       run: buf lint
+
+    - name: Save Maven cache
+      if: success() && inputs.saveCache == 'true'
+      uses: $/.github/actions/maven-save-cache
+      with:
+        cache-primary-key: ${{ steps.maven-cache.outputs.cache-primary-key }}
+        cache-hit: ${{ steps.maven-cache.outputs.cache-hit }}

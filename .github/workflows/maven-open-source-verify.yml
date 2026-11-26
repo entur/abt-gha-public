@@ -43,8 +43,9 @@ jobs:
         with:
           java-version: ${{ steps.java.outputs.java-version }}
           distribution: ${{ inputs.java-distribution }}
-      - name: Load Maven cache
-        uses: $/.github/actions/load-maven-cache
+      - name: Maven restore cache
+        id: maven-cache
+        uses: $/.github/actions/maven-restore-cache
       - name: Verify
         run: |
           mvn ${{ inputs.commands }}
@@ -81,3 +82,9 @@ jobs:
         with:
           name: surefire-reports-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: "**/target/surefire-reports/"
+      - name: Save Maven cache
+        if: success()
+        uses: $/.github/actions/maven-save-cache
+        with:
+          cache-primary-key: ${{ steps.maven-cache.outputs.cache-primary-key }}
+          cache-hit: ${{ steps.maven-cache.outputs.cache-hit }}

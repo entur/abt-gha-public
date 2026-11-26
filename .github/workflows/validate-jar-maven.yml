@@ -77,8 +77,9 @@ jobs:
           server-id: ${{ inputs.server-id }}
           server-username: MAVEN_USERNAME
           server-password: MAVEN_PASSWORD
-      - name: Load Maven cache
-        uses: $/.github/actions/load-maven-cache
+      - name: Maven restore cache
+        id: maven-cache
+        uses: $/.github/actions/maven-restore-cache
       - name: Verify (without profile)
         if: inputs.build-profiles == 'NO_PROFILE'
         env:
@@ -142,6 +143,12 @@ jobs:
           path: libs
           retention-days: 4
           overwrite: true
+      - name: Save Maven cache
+        if: success()
+        uses: $/.github/actions/maven-save-cache
+        with:
+          cache-primary-key: ${{ steps.maven-cache.outputs.cache-primary-key }}
+          cache-hit: ${{ steps.maven-cache.outputs.cache-hit }}
 
   auto-merge-if-dependabot-not-major:
     needs: validate-maven-build
