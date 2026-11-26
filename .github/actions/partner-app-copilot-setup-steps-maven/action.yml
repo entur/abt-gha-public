@@ -53,14 +53,10 @@ runs:
         server-username: PARTNER_READ_ARTIFACTORY_AUTH_USER
         server-password: PARTNER_READ_ARTIFACTORY_AUTH_TOKEN
 
-    - name: Restore Maven repository cache
-      id: maven-cache-restore
-      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+    - name: Load Maven cache
+      uses: $/.github/actions/load-maven-cache
       with:
-        path: ~/.m2/repository
-        key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-        restore-keys: |
-          ${{ runner.os }}-maven-
+        save: ${{ inputs.saveCache }}
 
     - name: Set up Buf
       if: inputs.setup-buf == 'true'
@@ -86,10 +82,3 @@ runs:
       if: inputs.setup-buf == 'true'
       shell: bash
       run: buf lint
-
-    - name: Save Maven repository cache
-      if: success() && steps.maven-cache-restore.outputs.cache-hit != 'true' && inputs.saveCache == 'true'
-      uses: actions/cache/save@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-      with:
-        path: ~/.m2/repository
-        key: ${{ steps.maven-cache-restore.outputs.cache-primary-key }}

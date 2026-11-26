@@ -43,13 +43,8 @@ jobs:
         with:
           java-version: ${{ steps.java.outputs.java-version }}
           distribution: ${{ inputs.java-distribution }}
-      - name: Cache Maven repository
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
+      - name: Load Maven cache
+        uses: $/.github/actions/load-maven-cache
       - name: Verify
         run: |
           mvn ${{ inputs.commands }}
