@@ -43,13 +43,9 @@ jobs:
         with:
           java-version: ${{ steps.java.outputs.java-version }}
           distribution: ${{ inputs.java-distribution }}
-      - name: Cache Maven repository
-        uses: actions/cache@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
-        with:
-          path: ~/.m2/repository
-          key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
-          restore-keys: |
-            ${{ runner.os }}-maven-
+      - name: Maven restore cache
+        id: maven-cache
+        uses: $/.github/actions/maven-restore-cache
       - name: Verify
         run: |
           mvn ${{ inputs.commands }}
@@ -86,3 +82,9 @@ jobs:
         with:
           name: surefire-reports-${{ github.job }}-${{ github.run_id }}-${{ github.run_attempt }}
           path: "**/target/surefire-reports/"
+      - name: Save Maven cache
+        if: success()
+        uses: $/.github/actions/maven-save-cache
+        with:
+          cache-primary-key: ${{ steps.maven-cache.outputs.cache-primary-key }}
+          cache-hit: ${{ steps.maven-cache.outputs.cache-hit }}

@@ -1,0 +1,20 @@
+name: Maven restore cache
+description: Restores the Maven repository cache (~/.m2/repository). Pair with maven-save-cache to save it at the end of the job.
+outputs:
+  cache-hit:
+    description: "Whether an exact match for the cache key was found"
+    value: ${{ steps.restore.outputs.cache-hit }}
+  cache-primary-key:
+    description: "The cache key to pass to maven-save-cache"
+    value: ${{ steps.restore.outputs.cache-primary-key }}
+runs:
+  using: composite
+  steps:
+    - name: Restore Maven repository cache
+      id: restore
+      uses: actions/cache/restore@55cc8345863c7cc4c66a329aec7e433d2d1c52a9 # v6.1.0
+      with:
+        path: ~/.m2/repository
+        key: ${{ runner.os }}-maven-${{ hashFiles('**/pom.xml') }}
+        restore-keys: |
+          ${{ runner.os }}-maven-
